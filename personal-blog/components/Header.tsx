@@ -3,7 +3,7 @@ import { PenLine } from "lucide-react"
 
 export default function Header() {
   return (
-    <header className="flex items-center justify-between px-6 py-5 md:px-12 lg:px-20">
+    <header className="flex sticky top-0 z-50 items-center justify-between px-6 py-5 md:px-12 lg:px-20">
       <Link href="/" className="flex items-center gap-2">
         <div className="flex size-8 items-center justify-center rounded-full bg-primary">
           <PenLine className="size-4 text-primary-foreground" />

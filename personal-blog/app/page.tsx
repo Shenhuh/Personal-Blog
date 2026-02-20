@@ -6,7 +6,7 @@ import Footer from "@/components/Footer"
 export default function Home() {
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+     
       <main>
         <Hero />
         <div className="mx-auto max-w-6xl px-6 md:px-12 lg:px-20">
@@ -16,7 +16,7 @@ export default function Home() {
           <RecentPosts />
         </div>
       </main>
-      <Footer />
+
     </div>
   )
 }

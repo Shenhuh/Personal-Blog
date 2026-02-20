@@ -8,6 +8,7 @@ interface PostCardProps {
   timeAgo: string
   likes: number
   comments: number
+  username?: string
 }
 
 export function PostCard({
@@ -17,9 +18,18 @@ export function PostCard({
   timeAgo,
   likes,
   comments,
+  username = "Anonymous",
 }: PostCardProps) {
   return (
     <article className="group cursor-pointer rounded-2xl border border-border bg-card p-6 transition-all hover:border-foreground/20 hover:shadow-sm md:p-8">
+      
+      {/* Username and avatar row */}
+      <div className="flex items-center gap-2 mb-4">
+        <div className="size-7 rounded-full bg-muted" />
+        <span className="text-sm font-medium text-foreground">{username}</span>
+      </div>
+
+      {/* Flair and time row */}
       <div className="flex items-center gap-3">
         <Badge
           variant="secondary"
@@ -32,15 +42,21 @@ export function PostCard({
           {timeAgo}
         </span>
       </div>
-      <h3 className="mt-4 font-serif text-xl leading-snug text-foreground transition-colors group-hover:text-accent md:text-2xl">
+
+      {/* Title - fixed color on hover */}
+      <h3 className="mt-4 font-serif text-xl leading-snug text-foreground transition-colors group-hover:text-foreground/80 md:text-2xl">
         {title}
       </h3>
+
+      {/* Excerpt */}
       <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-muted-foreground">
         {excerpt}
       </p>
+
+      {/* Footer */}
       <div className="mt-6 flex items-center gap-5 border-t border-border pt-5">
         <button
-          className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-accent"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-red-500"
           aria-label={`${likes} likes`}
         >
           <Heart className="size-3.5" />
