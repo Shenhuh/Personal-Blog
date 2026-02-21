@@ -43,15 +43,17 @@ export default function FeedPage() {
   const fetchPosts = async () => {
     let query = supabase
       .from("posts")
-      .select(`*, reactions(count), comments(count)`)
+      .select(`*, reactions(count), comments(count), profiles(username, avatar_url)`)
 
+  
     if (currentFlair !== "All") {
       query = query.eq("flair", currentFlair)
     }
 
     query = query.order("created_at", { ascending: false })
 
-    const { data } = await query
+    const { data, error } = await query
+
     if (data) {
       let sorted = data
 
@@ -254,7 +256,8 @@ export default function FeedPage() {
         timeAgo={new Date(post.created_at).toLocaleDateString()}
         likes={post.reactions[0]?.count ?? 0}
         comments={post.comments[0]?.count ?? 0}
-        username="Anonymous"
+        username={post.profiles?.username}
+        avatar={post.profiles?.avatar}
       />
     </Link>
   ))}

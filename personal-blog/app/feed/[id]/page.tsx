@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Heart, MessageCircle, Clock, ArrowLeft } from "lucide-react"
+import { Heart, MessageCircle, Clock, ArrowLeft, Eye } from "lucide-react"
 
 export default function PostPage() {
   const supabase = createClient()
@@ -16,20 +16,32 @@ export default function PostPage() {
   const [content, setContent] = useState("")
   const [reactions, setReactions] = useState<number>(0)
   const [hasReacted, setHasReacted] = useState(false)
+  const [viewers, setViewers] = useState(0)
 
   const fetchPost = async () => {
-    const { data } = await supabase.from("posts").select("*").eq("id", id).single()
+    const { data } = await supabase
+      .from("posts")
+      .select("*, profiles(username, avatar_url)")
+      .eq("id", id)
+      .single()
     if (data) setPost(data)
   }
 
   const fetchComments = async () => {
-    const { data } = await supabase.from("comments").select("*").eq("post_id", id).order("created_at", { ascending: true })
+    const { data } = await supabase
+      .from("comments")
+      .select("*, profiles(username, avatar_url)")
+      .eq("post_id", id)
+      .order("created_at", { ascending: true })
     if (data) setComments(data)
   }
 
   const fetchReactions = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    const { data, count } = await supabase.from("reactions").select("*", { count: "exact" }).eq("post_id", id)
+    const { data, count } = await supabase
+      .from("reactions")
+      .select("*", { count: "exact" })
+      .eq("post_id", id)
     if (count !== null) setReactions(count)
     if (user && data) setHasReacted(data.some(r => r.user_id === user.id))
   }
@@ -39,6 +51,24 @@ export default function PostPage() {
     fetchComments()
     fetchReactions()
   }, [])
+
+  // Realtime presence for viewers
+  useEffect(() => {
+    const channel = supabase.channel(`post-${id}`)
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState()
+        setViewers(Object.keys(state).length)
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({ user: Math.random() })
+        }
+      })
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [id])
 
   const handleComment = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -74,17 +104,30 @@ export default function PostPage() {
       {/* Post */}
       {post && (
         <article className="rounded-2xl border border-border bg-card p-6 md:p-8">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="size-7 rounded-full bg-muted" />
-            <span className="text-sm font-medium text-foreground">Anonymous</span>
-            <span className="text-muted-foreground">·</span>
-            <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-medium">
-              {post.flair}
-            </Badge>
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Clock className="size-3" />
-              {new Date(post.created_at).toLocaleDateString()}
-            </span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 flex-wrap">
+              {post.profiles?.avatar_url ? (
+                <img src={post.profiles.avatar_url} className="size-7 rounded-full object-cover" />
+              ) : (
+                <div className="size-7 rounded-full bg-muted" />
+              )}
+              <span className="text-sm font-medium text-foreground">
+                @{post.profiles?.username ?? "Anonymous"}
+              </span>
+              <span className="text-muted-foreground">·</span>
+              <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-medium">
+                {post.flair}
+              </Badge>
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Clock className="size-3" />
+                {new Date(post.created_at).toLocaleDateString()}
+              </span>
+            </div>
+            {/* Viewers */}
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+              <Eye className="size-3.5" />
+              <span>{viewers} reading</span>
+            </div>
           </div>
 
           <h1 className="mt-4 font-serif text-2xl leading-snug text-foreground md:text-3xl">
@@ -125,8 +168,14 @@ export default function PostPage() {
           {comments.map(comment => (
             <article key={comment.id} className="rounded-2xl border border-border bg-card p-4 md:p-6">
               <div className="flex items-center gap-2 mb-3">
-                <div className="size-6 rounded-full bg-muted" />
-                <span className="text-xs text-muted-foreground">Anonymous</span>
+                {comment.profiles?.avatar_url ? (
+                  <img src={comment.profiles.avatar_url} className="size-6 rounded-full object-cover" />
+                ) : (
+                  <div className="size-6 rounded-full bg-muted" />
+                )}
+                <span className="text-xs font-medium text-foreground">
+                  @{comment.profiles?.username ?? "Anonymous"}
+                </span>
               </div>
               <p className="text-sm leading-relaxed text-muted-foreground">{comment.content}</p>
             </article>

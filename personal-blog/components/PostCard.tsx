@@ -9,6 +9,7 @@ interface PostCardProps {
   likes: number
   comments: number
   username?: string
+  avatar?: string
 }
 
 export function PostCard({
@@ -18,18 +19,23 @@ export function PostCard({
   timeAgo,
   likes,
   comments,
-  username = "Anonymous",
+  username,
+  avatar,
 }: PostCardProps) {
   return (
     <article className="group cursor-pointer rounded-2xl border border-border bg-card p-6 transition-all hover:border-foreground/20 hover:shadow-sm md:p-8">
-      
-      {/* Username and avatar row */}
+      {/* Username and avatar */}
       <div className="flex items-center gap-2 mb-4">
-        <div className="size-7 rounded-full bg-muted" />
-        <span className="text-sm font-medium text-foreground">{username}</span>
+        
+        {avatar ? (
+          <img src={avatar} className="size-7 rounded-full object-cover" />
+        ) : (
+          <div className="size-7 rounded-full bg-muted" />
+        )}
+        <span className="text-sm font-medium text-foreground">@{username}</span>
       </div>
 
-      {/* Flair and time row */}
+      {/* Flair and time */}
       <div className="flex items-center gap-3">
         <Badge
           variant="secondary"
@@ -43,7 +49,7 @@ export function PostCard({
         </span>
       </div>
 
-      {/* Title - fixed color on hover */}
+      {/* Title */}
       <h3 className="mt-4 font-serif text-xl leading-snug text-foreground transition-colors group-hover:text-foreground/80 md:text-2xl">
         {title}
       </h3>
