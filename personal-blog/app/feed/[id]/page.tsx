@@ -1,11 +1,119 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Heart, MessageCircle, Clock, ArrowLeft, Eye } from "lucide-react"
+import { Heart, MessageCircle, Clock, ArrowLeft, Eye, Lock, VolumeX, ShieldOff, User } from "lucide-react"
+import { timeAgo } from "@/lib/timeAgo"
+
+function ProfileHoverCard({ profile, currentUserId, onClose }: {
+  profile: any
+  currentUserId: string
+  onClose: () => void
+}) {
+  const supabase = createClient()
+  const router = useRouter()
+  const [isBlocked, setIsBlocked] = useState(false)
+  const [isMuted, setIsMuted] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      const [{ data: blockData }, { data: muteData }] = await Promise.all([
+        supabase.from("blocks").select("id").eq("blocker_id", currentUserId).eq("blocked_id", profile.id).maybeSingle(),
+        supabase.from("mutes").select("id").eq("muter_id", currentUserId).eq("muted_id", profile.id).maybeSingle()
+      ])
+      setIsBlocked(!!blockData)
+      setIsMuted(!!muteData)
+      setLoading(false)
+    }
+    fetchStatus()
+  }, [profile.id])
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        onClose()
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const handleBlock = async () => {
+    if (isBlocked) {
+      await supabase.from("blocks").delete().eq("blocker_id", currentUserId).eq("blocked_id", profile.id)
+      setIsBlocked(false)
+    } else {
+      await supabase.from("blocks").insert({ blocker_id: currentUserId, blocked_id: profile.id })
+      setIsBlocked(true)
+    }
+  }
+
+  const handleMute = async () => {
+    if (isMuted) {
+      await supabase.from("mutes").delete().eq("muter_id", currentUserId).eq("muted_id", profile.id)
+      setIsMuted(false)
+    } else {
+      await supabase.from("mutes").insert({ muter_id: currentUserId, muted_id: profile.id })
+      setIsMuted(true)
+    }
+  }
+
+  if (profile.id === currentUserId) return null
+
+  return (
+    <div
+      ref={cardRef}
+      className="absolute z-50 left-0 top-8 w-56 rounded-2xl border border-border bg-card shadow-lg p-4"
+    >
+      <div className="flex items-center gap-3 mb-3">
+        {profile.avatar_url ? (
+          <img src={profile.avatar_url} className="size-10 rounded-full object-cover" />
+        ) : (
+          <div className="size-10 rounded-full bg-muted" />
+        )}
+        <div>
+          <p className="text-sm font-semibold text-foreground">@{profile.username}</p>
+          <p className="text-xs text-muted-foreground">Whisper user</p>
+        </div>
+      </div>
+
+      <div className="border-t border-border pt-3 space-y-1">
+        <button
+          onClick={() => router.push(`/feed/user/${profile.id}`)}
+          className="flex items-center gap-2 w-full rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
+        >
+          <User className="size-3.5" />
+          View profile
+        </button>
+        <button
+          onClick={handleMute}
+          disabled={loading}
+          className={`flex items-center gap-2 w-full rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
+            isMuted ? "text-yellow-500 bg-yellow-500/10" : "text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          <VolumeX className="size-3.5" />
+          {isMuted ? "Unmute user" : "Mute user"}
+        </button>
+        <button
+          onClick={handleBlock}
+          disabled={loading}
+          className={`flex items-center gap-2 w-full rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
+            isBlocked ? "text-red-500 bg-red-500/10" : "text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          <ShieldOff className="size-3.5" />
+          {isBlocked ? "Unblock user" : "Block user"}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export default function PostPage() {
   const supabase = createClient()
@@ -17,11 +125,22 @@ export default function PostPage() {
   const [reactions, setReactions] = useState<number>(0)
   const [hasReacted, setHasReacted] = useState(false)
   const [viewers, setViewers] = useState(0)
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [currentProfile, setCurrentProfile] = useState<any>(null)
+  const [activeHover, setActiveHover] = useState<string | null>(null)
+
+  const fetchCurrentUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    setCurrentUser(user)
+    const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single()
+    if (data) setCurrentProfile(data)
+  }
 
   const fetchPost = async () => {
     const { data } = await supabase
       .from("posts")
-      .select("*, profiles(username, avatar_url)")
+      .select("*, profiles(id, username, avatar_url)")
       .eq("id", id)
       .single()
     if (data) setPost(data)
@@ -30,7 +149,7 @@ export default function PostPage() {
   const fetchComments = async () => {
     const { data } = await supabase
       .from("comments")
-      .select("*, profiles(username, avatar_url)")
+      .select("*, profiles(id, username, avatar_url)")
       .eq("post_id", id)
       .order("created_at", { ascending: true })
     if (data) setComments(data)
@@ -47,12 +166,12 @@ export default function PostPage() {
   }
 
   useEffect(() => {
+    fetchCurrentUser()
     fetchPost()
     fetchComments()
     fetchReactions()
   }, [])
 
-  // Realtime presence for viewers
   useEffect(() => {
     const channel = supabase.channel(`post-${id}`)
     channel
@@ -65,14 +184,13 @@ export default function PostPage() {
           await channel.track({ user: Math.random() })
         }
       })
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => { supabase.removeChannel(channel) }
   }, [id])
 
   const handleComment = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user || !content) return
+    if (post?.locked) return
     await supabase.from("comments").insert({ post_id: id, user_id: user.id, content })
     setContent("")
     fetchComments()
@@ -92,7 +210,6 @@ export default function PostPage() {
   return (
     <div className="max-w-4xl mx-auto w-full px-6 py-6 space-y-4">
 
-      {/* Back button */}
       <button
         onClick={() => router.back()}
         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -101,29 +218,41 @@ export default function PostPage() {
         Back
       </button>
 
-      {/* Post */}
       {post && (
         <article className="rounded-2xl border border-border bg-card p-6 md:p-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 flex-wrap">
-              {post.profiles?.avatar_url ? (
-                <img src={post.profiles.avatar_url} className="size-7 rounded-full object-cover" />
-              ) : (
-                <div className="size-7 rounded-full bg-muted" />
-              )}
-              <span className="text-sm font-medium text-foreground">
-                @{post.profiles?.username ?? "Anonymous"}
-              </span>
+              <div className="relative">
+                <button
+                  onClick={() => setActiveHover(activeHover === "post-author" ? null : "post-author")}
+                  className="flex items-center gap-2"
+                >
+                  {post.profiles?.avatar_url ? (
+                    <img src={post.profiles.avatar_url} className="size-7 rounded-full object-cover hover:ring-2 ring-primary transition-all" />
+                  ) : (
+                    <div className="size-7 rounded-full bg-muted hover:ring-2 ring-primary transition-all" />
+                  )}
+                  <span className="text-sm font-medium text-foreground hover:underline">
+                    @{post.profiles?.username ?? "Anonymous"}
+                  </span>
+                </button>
+                {activeHover === "post-author" && currentUser && post.profiles && (
+                  <ProfileHoverCard
+                    profile={post.profiles}
+                    currentUserId={currentUser.id}
+                    onClose={() => setActiveHover(null)}
+                  />
+                )}
+              </div>
               <span className="text-muted-foreground">·</span>
               <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-medium">
                 {post.flair}
               </Badge>
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Clock className="size-3" />
-                {new Date(post.created_at).toLocaleDateString()}
+                {timeAgo(post.created_at)}
               </span>
             </div>
-            {/* Viewers */}
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
               <Eye className="size-3.5" />
               <span>{viewers} reading</span>
@@ -154,8 +283,15 @@ export default function PostPage() {
         </article>
       )}
 
-      {/* Comments */}
-      <h2 className="font-serif text-xl text-foreground">Comments</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="font-serif text-xl text-foreground">Comments</h2>
+        {post?.locked && (
+          <div className="flex items-center gap-1.5 text-xs text-orange-500 bg-orange-500/10 rounded-full px-3 py-1.5">
+            <Lock className="size-3" />
+            Comments locked
+          </div>
+        )}
+      </div>
 
       {comments.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -168,13 +304,30 @@ export default function PostPage() {
           {comments.map(comment => (
             <article key={comment.id} className="rounded-2xl border border-border bg-card p-4 md:p-6">
               <div className="flex items-center gap-2 mb-3">
-                {comment.profiles?.avatar_url ? (
-                  <img src={comment.profiles.avatar_url} className="size-6 rounded-full object-cover" />
-                ) : (
-                  <div className="size-6 rounded-full bg-muted" />
-                )}
-                <span className="text-xs font-medium text-foreground">
-                  @{comment.profiles?.username ?? "Anonymous"}
+                <div className="relative">
+                  <button
+                    onClick={() => setActiveHover(activeHover === comment.id ? null : comment.id)}
+                    className="flex items-center gap-2"
+                  >
+                    {comment.profiles?.avatar_url ? (
+                      <img src={comment.profiles.avatar_url} className="size-6 rounded-full object-cover hover:ring-2 ring-primary transition-all" />
+                    ) : (
+                      <div className="size-6 rounded-full bg-muted hover:ring-2 ring-primary transition-all" />
+                    )}
+                    <span className="text-xs font-medium text-foreground hover:underline">
+                      @{comment.profiles?.username ?? "Anonymous"}
+                    </span>
+                  </button>
+                  {activeHover === comment.id && currentUser && comment.profiles && (
+                    <ProfileHoverCard
+                      profile={comment.profiles}
+                      currentUserId={currentUser.id}
+                      onClose={() => setActiveHover(null)}
+                    />
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground ml-auto">
+                  {timeAgo(comment.created_at)}
                 </span>
               </div>
               <p className="text-sm leading-relaxed text-muted-foreground">{comment.content}</p>
@@ -183,22 +336,34 @@ export default function PostPage() {
         </div>
       )}
 
-      {/* Comment Form */}
-      <article className="rounded-2xl border border-border bg-card p-4 md:p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="size-7 rounded-full bg-muted" />
-          <span className="text-sm font-medium text-foreground">Write a comment</span>
+      {post?.locked ? (
+        <div className="flex items-center gap-2 text-sm text-orange-500 bg-orange-500/10 rounded-2xl px-6 py-4">
+          <Lock className="size-4 shrink-0" />
+          The author has locked comments on this post
         </div>
-        <textarea
-          value={content}
-          onChange={e => setContent(e.target.value)}
-          placeholder="Share your thoughts anonymously..."
-          className="w-full border rounded-xl p-3 mb-3 h-24 resize-none bg-background text-sm"
-        />
-        <Button onClick={handleComment} className="rounded-full">
-          Comment
-        </Button>
-      </article>
+      ) : (
+        <article className="rounded-2xl border border-border bg-card p-4 md:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            {currentProfile?.avatar_url ? (
+              <img src={currentProfile.avatar_url} className="size-7 rounded-full object-cover" />
+            ) : (
+              <div className="size-7 rounded-full bg-muted" />
+            )}
+            <span className="text-sm font-medium text-foreground">
+              @{currentProfile?.username ?? "Write a comment"}
+            </span>
+          </div>
+          <textarea
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            placeholder="Share your thoughts anonymously..."
+            className="w-full border rounded-xl p-3 mb-3 h-24 resize-none bg-background text-sm"
+          />
+          <Button onClick={handleComment} className="rounded-full">
+            Comment
+          </Button>
+        </article>
+      )}
 
     </div>
   )

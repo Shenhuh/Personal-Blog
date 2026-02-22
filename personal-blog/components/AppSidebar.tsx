@@ -13,9 +13,8 @@ import { usePathname, useRouter } from "next/navigation"
 
 const navItems = [
   { label: "Feed", href: "/feed", icon: Home },
-  { label: "Notifications", href: "/notifications", icon: Bell },
-  { label: "My Posts", href: "/my-posts", icon: FileText },
-  { label: "Profile", href: "/profile", icon: User },
+
+  { label: "Profile", href: "/feed/profile", icon: User },
 ]
 
 export function AppSidebar() {

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { PostCard } from "@/components/PostCard"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ChevronLeft, ChevronRight, Search } from "lucide-react"
+import { timeAgo } from "@/lib/timeAgo"
 import Link from "next/link"
 
 const sortOptions = ["Latest", "Top Liked", "Most Commented", "Trending"]
@@ -45,14 +46,13 @@ export default function FeedPage() {
       .from("posts")
       .select(`*, reactions(count), comments(count), profiles(username, avatar_url)`)
 
-  
     if (currentFlair !== "All") {
       query = query.eq("flair", currentFlair)
     }
 
     query = query.order("created_at", { ascending: false })
 
-    const { data, error } = await query
+    const { data } = await query
 
     if (data) {
       let sorted = data
@@ -246,34 +246,34 @@ export default function FeedPage() {
       </div>
 
       {/* Posts Grid */}
-<div className="grid gap-5 md:grid-cols-2">
-  {posts.map(post => (
-    <Link href={`/feed/${post.id}`} key={post.id}>
-      <PostCard
-        title={post.title}
-        excerpt={post.content}
-        tag={post.flair}
-        timeAgo={new Date(post.created_at).toLocaleDateString()}
-        likes={post.reactions[0]?.count ?? 0}
-        comments={post.comments[0]?.count ?? 0}
-        username={post.profiles?.username}
-        avatar={post.profiles?.avatar}
-      />
-    </Link>
-  ))}
-</div>
+      <div className="grid gap-5 md:grid-cols-2">
+        {posts.map(post => (
+          <Link href={`/feed/${post.id}`} key={post.id}>
+            <PostCard
+              title={post.title}
+              excerpt={post.content}
+              tag={post.flair}
+              timeAgo={timeAgo(post.created_at)}
+              likes={post.reactions[0]?.count ?? 0}
+              comments={post.comments[0]?.count ?? 0}
+              username={post.profiles?.username ?? "Anonymous"}
+              avatar={post.profiles?.avatar_url ?? ""}
+            />
+          </Link>
+        ))}
+      </div>
 
-{posts.length === 0 && (
-  <div className="flex flex-col items-center justify-center py-20 text-center">
-    <p className="text-4xl mb-4">🤫</p>
-    <p className="text-sm font-medium text-foreground">No whispers here yet</p>
-    <p className="text-xs text-muted-foreground mt-1">
-      {currentFlair !== "All"
-        ? `No posts found under "${currentFlair}"`
-        : "Be the first to whisper something"}
-    </p>
-  </div>
-)}
+      {posts.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <p className="text-4xl mb-4">🤫</p>
+          <p className="text-sm font-medium text-foreground">No whispers here yet</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {currentFlair !== "All"
+              ? `No posts found under "${currentFlair}"`
+              : "Be the first to whisper something"}
+          </p>
+        </div>
+      )}
 
     </div>
   )
