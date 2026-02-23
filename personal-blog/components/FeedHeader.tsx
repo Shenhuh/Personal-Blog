@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
-import { Search, Bell, Heart, MessageCircle } from "lucide-react"
-import Link from "next/link"
+import { Search, Bell, Heart, MessageCircle, Users } from "lucide-react"
 import { timeAgo } from "@/lib/timeAgo"
 
 export default function FeedHeader() {
@@ -12,51 +11,61 @@ export default function FeedHeader() {
   const router = useRouter()
   const [username, setUsername] = useState("")
   const [avatar, setAvatar] = useState("")
+  const [userId, setUserId] = useState<string | null>(null)
   const [notifications, setNotifications] = useState<any[]>([])
   const [showPopup, setShowPopup] = useState(false)
   const popupRef = useRef<HTMLDivElement>(null)
 
   const unreadCount = notifications.filter(n => !n.is_read).length
 
-  const fetchProfile = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const { data } = await supabase.from("profiles").select("username, avatar_url").eq("id", user.id).single()
-    if (data) {
-      setUsername(data.username)
-      setAvatar(data.avatar_url ?? "")
-    }
-  }
-
-  const fetchNotifications = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+  const fetchNotifications = async (uid: string) => {
     const { data } = await supabase
       .from("notifications")
-      .select("*, actor:actor_id(username, avatar_url), post:post_id(title)")
-      .eq("user_id", user.id)
+      .select("*, actor:actor_id(username, avatar_url), post:post_id(title, user_id)")
+      .eq("user_id", uid)
       .order("created_at", { ascending: false })
       .limit(20)
     if (data) setNotifications(data)
   }
 
-  const markAllRead = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+  const markAllRead = async (uid: string) => {
     await supabase
       .from("notifications")
       .update({ is_read: true })
-      .eq("user_id", user.id)
+      .eq("user_id", uid)
       .eq("is_read", false)
-    fetchNotifications()
+    fetchNotifications(uid)
   }
 
   const handleBellClick = () => {
     setShowPopup(prev => !prev)
-    if (!showPopup && unreadCount > 0) markAllRead()
+    if (!showPopup && unreadCount > 0 && userId) markAllRead(userId)
   }
 
-  // Close on outside click
+  const getNotificationText = (n: any) => {
+    if (n.type === "reaction") return " liked your post"
+    if (n.type === "follow") return " started following you"
+    if (n.type === "comment") return " commented on your post"
+    if (n.type === "comment_watch") return " commented on a post you're watching"
+    return ""
+  }
+
+  const getIconBg = (type: string) => {
+    if (type === "reaction") return "bg-red-500"
+    if (type === "follow") return "bg-primary"
+    if (type === "comment_watch") return "bg-yellow-500"
+    return "bg-primary"
+  }
+
+  const handleNotificationClick = (n: any) => {
+    if (n.type === "follow") {
+      router.push(`/feed/user/${n.actor_id}`)
+    } else if (n.post_id) {
+      router.push(`/feed/${n.post_id}`)
+    }
+    setShowPopup(false)
+  }
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
@@ -67,30 +76,58 @@ export default function FeedHeader() {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
-  // Realtime notifications
   useEffect(() => {
-    fetchProfile()
-    fetchNotifications()
+    let channel: any = null
 
-    const channel = supabase
-      .channel("notifications-realtime")
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "notifications"
-      }, () => {
-        fetchNotifications()
-      })
-      .subscribe()
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
-    return () => { supabase.removeChannel(channel) }
+      setUserId(user.id)
+
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("username, avatar_url")
+        .eq("id", user.id)
+        .single()
+      if (profileData) {
+        setUsername(profileData.username)
+        setAvatar(profileData.avatar_url ?? "")
+      }
+
+      await fetchNotifications(user.id)
+
+      channel = supabase
+        .channel(`notif-header-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log("realtime notification received:", payload)
+            fetchNotifications(user.id)
+          }
+        )
+        .subscribe((status) => {
+          console.log("subscription status:", status)
+        })
+    }
+
+    init()
+
+    return () => {
+      if (channel) supabase.removeChannel(channel)
+    }
   }, [])
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur px-6 py-3">
       <div className="max-w-4xl mx-auto flex items-center gap-4">
 
-        {/* Search */}
         <div className="flex items-center gap-2 border border-border rounded-full px-4 py-2 flex-1 max-w-xl bg-background">
           <Search className="size-4 text-muted-foreground shrink-0" />
           <input
@@ -100,8 +137,6 @@ export default function FeedHeader() {
         </div>
 
         <div className="flex items-center gap-3 ml-auto">
-
-          {/* Notification Bell */}
           <div className="relative" ref={popupRef}>
             <button
               onClick={handleBellClick}
@@ -115,14 +150,13 @@ export default function FeedHeader() {
               )}
             </button>
 
-            {/* Popup */}
             {showPopup && (
               <div className="absolute right-0 top-11 w-80 rounded-2xl border border-border bg-card shadow-xl z-50 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                   <h3 className="text-sm font-semibold text-foreground">Notifications</h3>
                   {unreadCount > 0 && (
                     <button
-                      onClick={markAllRead}
+                      onClick={() => userId && markAllRead(userId)}
                       className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       Mark all read
@@ -140,29 +174,31 @@ export default function FeedHeader() {
                     notifications.map(n => (
                       <button
                         key={n.id}
-                        onClick={() => {
-                          router.push(`/feed/${n.post_id}`)
-                          setShowPopup(false)
-                        }}
+                        onClick={() => handleNotificationClick(n)}
                         className={`w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-muted transition-colors ${!n.is_read ? "bg-primary/5" : ""}`}
                       >
-                        {n.actor?.avatar_url ? (
-                          <img src={n.actor.avatar_url} className="size-8 rounded-full object-cover shrink-0 mt-0.5" />
-                        ) : (
-                          <div className="size-8 rounded-full bg-muted shrink-0 mt-0.5 flex items-center justify-center">
+                        <div className="relative shrink-0">
+                          {n.actor?.avatar_url ? (
+                            <img src={n.actor.avatar_url} className="size-8 rounded-full object-cover mt-0.5" />
+                          ) : (
+                            <div className="size-8 rounded-full bg-muted mt-0.5" />
+                          )}
+                          <div className={`absolute -bottom-0.5 -right-0.5 size-4 rounded-full flex items-center justify-center ${getIconBg(n.type)}`}>
                             {n.type === "reaction" ? (
-                              <Heart className="size-3.5 text-red-400" />
+                              <Heart className="size-2 text-white" />
+                            ) : n.type === "follow" ? (
+                              <Users className="size-2 text-white" />
                             ) : (
-                              <MessageCircle className="size-3.5 text-muted-foreground" />
+                              <MessageCircle className="size-2 text-white" />
                             )}
                           </div>
-                        )}
+                        </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs text-foreground leading-snug">
                             <span className="font-semibold">@{n.actor?.username ?? "Someone"}</span>
-                            {n.type === "reaction" ? " liked your post" : " commented on your post"}
+                            {getNotificationText(n)}
                           </p>
-                          {n.post?.title && (
+                          {n.post?.title && n.type !== "follow" && (
                             <p className="text-xs text-muted-foreground mt-0.5 truncate">"{n.post.title}"</p>
                           )}
                           <p className="text-[10px] text-muted-foreground mt-1">{timeAgo(n.created_at)}</p>
@@ -187,7 +223,6 @@ export default function FeedHeader() {
             )}
           </div>
 
-          {/* User info */}
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
               <p className="text-xs text-muted-foreground">Logged in as</p>
@@ -199,7 +234,6 @@ export default function FeedHeader() {
               <div className="size-8 rounded-full bg-muted" />
             )}
           </div>
-
         </div>
       </div>
     </header>
