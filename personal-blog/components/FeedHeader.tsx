@@ -3,8 +3,10 @@
 import { useState, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
-import { Search, Bell, Heart, MessageCircle, Users } from "lucide-react"
+import { Search, Bell, Heart, MessageCircle, Users, Menu } from "lucide-react"
 import { timeAgo } from "@/lib/timeAgo"
+// Import the SidebarTrigger from your shadcn components
+import { SidebarTrigger } from "@/components/ui/sidebar"
 
 export default function FeedHeader() {
   const supabase = createClient()
@@ -108,13 +110,10 @@ export default function FeedHeader() {
             filter: `user_id=eq.${user.id}`
           },
           (payload) => {
-            console.log("realtime notification received:", payload)
             fetchNotifications(user.id)
           }
         )
-        .subscribe((status) => {
-          console.log("subscription status:", status)
-        })
+        .subscribe()
     }
 
     init()
@@ -125,18 +124,27 @@ export default function FeedHeader() {
   }, [])
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur px-6 py-3">
-      <div className="max-w-4xl mx-auto flex items-center gap-4">
+    <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur px-4 md:px-6 py-3">
+      <div className="max-w-4xl mx-auto flex items-center gap-2 md:gap-4">
+        
+        {/* MOBILE SIDEBAR TRIGGER */}
+        <div className="md:hidden flex items-center">
+          <SidebarTrigger>
+             <Menu className="size-5 text-muted-foreground" />
+          </SidebarTrigger>
+        </div>
 
+        {/* SEARCH BAR */}
         <div className="flex items-center gap-2 border border-border rounded-full px-4 py-2 flex-1 max-w-xl bg-background">
           <Search className="size-4 text-muted-foreground shrink-0" />
           <input
             placeholder="Search whispers..."
-            className="bg-transparent outline-none text-sm flex-1 text-foreground placeholder:text-muted-foreground"
+            className="bg-transparent outline-none text-sm flex-1 text-foreground placeholder:text-muted-foreground min-w-0"
           />
         </div>
 
-        <div className="flex items-center gap-3 ml-auto">
+        <div className="flex items-center gap-2 md:gap-3 ml-auto">
+          {/* NOTIFICATIONS */}
           <div className="relative" ref={popupRef}>
             <button
               onClick={handleBellClick}
@@ -151,7 +159,7 @@ export default function FeedHeader() {
             </button>
 
             {showPopup && (
-              <div className="absolute right-0 top-11 w-80 rounded-2xl border border-border bg-card shadow-xl z-50 overflow-hidden">
+              <div className="absolute right-0 top-11 w-72 md:w-80 rounded-2xl border border-border bg-card shadow-xl z-50 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                   <h3 className="text-sm font-semibold text-foreground">Notifications</h3>
                   {unreadCount > 0 && (
@@ -223,16 +231,26 @@ export default function FeedHeader() {
             )}
           </div>
 
+          {/* USER AVATAR SECTION */}
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
               <p className="text-xs text-muted-foreground">Logged in as</p>
               <p className="text-sm font-medium text-foreground">@{username}</p>
             </div>
-            {avatar ? (
-              <img src={avatar} className="size-8 rounded-full object-cover" />
-            ) : (
-              <div className="size-8 rounded-full bg-muted" />
-            )}
+            
+            {/* Clickable Avatar */}
+            <button 
+              onClick={() => router.push("/feed/profile")}
+              className="flex items-center justify-center shrink-0 rounded-full hover:ring-2 hover:ring-primary/20 transition-all"
+            >
+              {avatar ? (
+                <img src={avatar} className="size-8 rounded-full object-cover shadow-sm" alt="Profile" />
+              ) : (
+                <div className="size-8 rounded-full bg-muted flex items-center justify-center">
+                   <Users className="size-4 text-muted-foreground" />
+                </div>
+              )}
+            </button>
           </div>
         </div>
       </div>
