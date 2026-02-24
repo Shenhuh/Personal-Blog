@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Heart, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { timeAgo } from "@/lib/timeAgo"
@@ -29,6 +29,7 @@ export default function UserProfilePage() {
 
     const [{ data: profileData }, { data: postsData }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", id).single(),
+      // Ensure image_urls is selected
       supabase.from("posts").select("*, reactions(count), comments(count)").eq("user_id", id).order("created_at", { ascending: false })
     ])
 
@@ -83,7 +84,7 @@ export default function UserProfilePage() {
       </button>
 
       {/* Profile Card */}
-      <div className="rounded-2xl border border-border bg-card p-6 md:p-8">
+      <div className="rounded-2xl border border-border bg-card p-6 md:p-8 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-4">
             {profile.avatar_url ? (
@@ -94,7 +95,7 @@ export default function UserProfilePage() {
             <div>
               <h1 className="text-xl font-bold text-foreground">@{profile.username}</h1>
               {profile.bio && (
-                <p className="text-sm text-muted-foreground mt-1 max-w-sm">{profile.bio}</p>
+                <p className="text-sm text-muted-foreground mt-1 max-w-sm leading-relaxed">{profile.bio}</p>
               )}
             </div>
           </div>
@@ -103,7 +104,7 @@ export default function UserProfilePage() {
             <Button
               size="sm"
               variant={isFollowing ? "outline" : "default"}
-              className="rounded-full shrink-0"
+              className="rounded-full shrink-0 px-6"
               onClick={handleFollow}
             >
               {isFollowing ? "Unfollow" : "Follow"}
@@ -114,7 +115,7 @@ export default function UserProfilePage() {
             <Button
               size="sm"
               variant="outline"
-              className="rounded-full shrink-0"
+              className="rounded-full shrink-0 px-6"
               onClick={() => router.push("/feed/profile")}
             >
               Edit profile
@@ -126,21 +127,21 @@ export default function UserProfilePage() {
         <div className="flex items-center gap-6 mt-6 pt-4 border-t border-border">
           <div className="text-center">
             <p className="text-lg font-bold text-foreground">{followerCount}</p>
-            <p className="text-xs text-muted-foreground">Followers</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Followers</p>
           </div>
           <div className="text-center">
             <p className="text-lg font-bold text-foreground">{followingCount}</p>
-            <p className="text-xs text-muted-foreground">Following</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Following</p>
           </div>
           <div className="text-center">
             <p className="text-lg font-bold text-foreground">{posts.length}</p>
-            <p className="text-xs text-muted-foreground">Posts</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Posts</p>
           </div>
         </div>
       </div>
 
-      {/* Posts */}
-      <h2 className="font-serif text-xl text-foreground">Whispers</h2>
+      {/* Posts Section */}
+      <h2 className="text-lg font-bold text-foreground">Whispers</h2>
 
       {posts.length === 0 ? (
         <div className="text-center py-16">
@@ -150,17 +151,40 @@ export default function UserProfilePage() {
       ) : (
         <div className="space-y-4">
           {posts.map(post => (
-            <Link key={post.id} href={`/feed/${post.id}`}>
-              <div className="rounded-2xl border border-border bg-card p-5 hover:border-foreground/20 transition-colors">
+            <Link key={post.id} href={`/feed/${post.id}`} className="block group">
+              <div className="rounded-2xl border border-border bg-card p-5 group-hover:border-primary/30 transition-all duration-300">
                 <div className="flex items-center gap-2 mb-3">
-                  <Badge variant="secondary" className="rounded-full text-xs px-2 py-0.5">{post.flair}</Badge>
-                  <span className="text-xs text-muted-foreground">{timeAgo(post.created_at)}</span>
+                  <Badge variant="secondary" className="rounded-full text-[10px] px-2 py-0">{post.flair}</Badge>
+                  <span className="text-[10px] text-muted-foreground font-medium">{timeAgo(post.created_at)}</span>
                 </div>
+                
                 <h3 className="text-sm font-semibold text-foreground mb-1">{post.title}</h3>
-                <p className="text-xs text-muted-foreground line-clamp-2">{post.content}</p>
+                <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">{post.content}</p>
+
+                {/* IMAGE GRID FIX: Rendering multiple images if they exist */}
+                {post.image_urls && post.image_urls.length > 0 && (
+                  <div className={`mb-4 grid gap-2 ${post.image_urls.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                    {post.image_urls.slice(0, 4).map((url: string, idx: number) => (
+                      <div key={idx} className="rounded-xl overflow-hidden border border-border bg-muted/30 aspect-video">
+                        <img 
+                          src={url} 
+                          alt="Post content" 
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border">
-                  <span className="text-xs text-muted-foreground">♥ {post.reactions[0]?.count ?? 0}</span>
-                  <span className="text-xs text-muted-foreground">💬 {post.comments[0]?.count ?? 0}</span>
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                    <Heart className="size-3" />
+                    {post.reactions[0]?.count ?? 0}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                    <MessageSquare className="size-3" />
+                    {post.comments[0]?.count ?? 0}
+                  </div>
                 </div>
               </div>
             </Link>

@@ -5,8 +5,130 @@ import { createClient } from "@/lib/supabase/client"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Heart, MessageCircle, Clock, ArrowLeft, Eye, Lock, VolumeX, ShieldOff, User, Bookmark, Bell, ImagePlus, X as XIcon } from "lucide-react"
+import { Heart, MessageCircle, Clock, ArrowLeft, Eye, Lock, VolumeX, ShieldOff, User, Bookmark, Bell, ImagePlus, X as XIcon, ChevronLeft, ChevronRight } from "lucide-react"
 import { timeAgo } from "@/lib/timeAgo"
+
+// Lightbox
+function Lightbox({ images, startIndex, onClose }: { images: string[], startIndex: number, onClose: () => void }) {
+  const [current, setCurrent] = useState(startIndex)
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+      if (e.key === "ArrowRight") setCurrent(p => Math.min(p + 1, images.length - 1))
+      if (e.key === "ArrowLeft") setCurrent(p => Math.max(p - 1, 0))
+    }
+    document.addEventListener("keydown", handleKey)
+    return () => document.removeEventListener("keydown", handleKey)
+  }, [images.length])
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center" onClick={onClose}>
+      <button onClick={onClose} className="absolute top-4 right-4 text-white p-2 hover:bg-white/10 rounded-full">
+        <XIcon className="size-6" />
+      </button>
+      {images.length > 1 && (
+        <>
+          <button
+            onClick={e => { e.stopPropagation(); setCurrent(p => Math.max(p - 1, 0)) }}
+            disabled={current === 0}
+            className="absolute left-4 text-white p-2 hover:bg-white/10 rounded-full disabled:opacity-30"
+          >
+            <ChevronLeft className="size-6" />
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); setCurrent(p => Math.min(p + 1, images.length - 1)) }}
+            disabled={current === images.length - 1}
+            className="absolute right-4 text-white p-2 hover:bg-white/10 rounded-full disabled:opacity-30"
+          >
+            <ChevronRight className="size-6" />
+          </button>
+        </>
+      )}
+      <img
+        src={images[current]}
+        onClick={e => e.stopPropagation()}
+        className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl"
+      />
+      {images.length > 1 && (
+        <div className="absolute bottom-4 flex gap-2">
+          {images.map((_, i) => (
+            <button
+              key={i}
+              onClick={e => { e.stopPropagation(); setCurrent(i) }}
+              className={`size-2 rounded-full transition-colors ${i === current ? "bg-white" : "bg-white/40"}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Image grid for post/comment display
+// Image grid for post/comment display
+function ImageGrid({ images, onView }: { images: string[], onView: (index: number) => void }) {
+  if (!images || images.length === 0) return null
+  const count = images.length
+
+  // Shared styles for the detail page
+  const wrapperClass = "mt-4 rounded-2xl overflow-hidden border border-border bg-muted relative"
+  const containerStyle = { height: "320px" } // Slightly taller for the post page
+  const imgClass = "w-full h-full object-cover hover:opacity-95 transition-all cursor-pointer"
+
+  if (count === 1) return (
+    <div className={wrapperClass} style={{ maxHeight: "500px", height: "auto" }} onClick={() => onView(0)}>
+      <img src={images[0]} className="w-full h-auto object-contain bg-black/5" />
+    </div>
+  )
+
+  if (count === 2) return (
+    <div className={wrapperClass} style={containerStyle}>
+      <div className="flex gap-1 h-full">
+        {images.slice(0, 2).map((url, i) => (
+          <div key={i} className="flex-1 min-w-0" onClick={() => onView(i)}>
+            <img src={url} className={imgClass} alt="" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  if (count === 3) return (
+    <div className={wrapperClass} style={containerStyle}>
+      <div className="flex gap-1 h-full">
+        <div className="flex-[2] min-w-0" onClick={() => onView(0)}>
+          <img src={images[0]} className={imgClass} alt="" />
+        </div>
+        <div className="flex flex-1 flex-col gap-1 min-w-0">
+          {images.slice(1, 3).map((url, i) => (
+            <div key={i} className="flex-1 min-h-0" onClick={() => onView(i + 1)}>
+              <img src={url} className={imgClass} alt="" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+
+  // 4 or more
+  return (
+    <div className={wrapperClass} style={containerStyle}>
+      <div className="grid grid-cols-2 grid-rows-2 gap-1 h-full">
+        {images.slice(0, 4).map((url, i) => (
+          <div key={i} className="relative h-full w-full min-h-0" onClick={() => onView(i)}>
+            <img src={url} className={imgClass} alt="" />
+            {i === 3 && count > 4 && (
+              <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm">
+                <span className="text-white text-3xl font-bold">+{count - 4}</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function ProfileHoverCard({ profile, currentUserId, onClose }: {
   profile: any
@@ -35,9 +157,7 @@ function ProfileHoverCard({ profile, currentUserId, onClose }: {
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
-        onClose()
-      }
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) onClose()
     }
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
@@ -79,30 +199,15 @@ function ProfileHoverCard({ profile, currentUserId, onClose }: {
         </div>
       </div>
       <div className="border-t border-border pt-3 space-y-1">
-        <button
-          onClick={() => router.push(`/feed/user/${profile.id}`)}
-          className="flex items-center gap-2 w-full rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
-        >
+        <button onClick={() => router.push(`/feed/user/${profile.id}`)} className="flex items-center gap-2 w-full rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors">
           <User className="size-3.5" />
           View profile
         </button>
-        <button
-          onClick={handleMute}
-          disabled={loading}
-          className={`flex items-center gap-2 w-full rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
-            isMuted ? "text-yellow-500 bg-yellow-500/10" : "text-muted-foreground hover:bg-muted"
-          }`}
-        >
+        <button onClick={handleMute} disabled={loading} className={`flex items-center gap-2 w-full rounded-xl px-3 py-2 text-xs font-medium transition-colors ${isMuted ? "text-yellow-500 bg-yellow-500/10" : "text-muted-foreground hover:bg-muted"}`}>
           <VolumeX className="size-3.5" />
           {isMuted ? "Unmute user" : "Mute user"}
         </button>
-        <button
-          onClick={handleBlock}
-          disabled={loading}
-          className={`flex items-center gap-2 w-full rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
-            isBlocked ? "text-red-500 bg-red-500/10" : "text-muted-foreground hover:bg-muted"
-          }`}
-        >
+        <button onClick={handleBlock} disabled={loading} className={`flex items-center gap-2 w-full rounded-xl px-3 py-2 text-xs font-medium transition-colors ${isBlocked ? "text-red-500 bg-red-500/10" : "text-muted-foreground hover:bg-muted"}`}>
           <ShieldOff className="size-3.5" />
           {isBlocked ? "Unblock user" : "Block user"}
         </button>
@@ -126,9 +231,16 @@ export default function PostPage() {
   const [activeHover, setActiveHover] = useState<string | null>(null)
   const [isSaved, setIsSaved] = useState(false)
   const [isWatching, setIsWatching] = useState(false)
-  const [commentImage, setCommentImage] = useState<File | null>(null)
-  const [commentImagePreview, setCommentImagePreview] = useState<string | null>(null)
+  const [commentImages, setCommentImages] = useState<File[]>([])
+  const [commentImagePreviews, setCommentImagePreviews] = useState<string[]>([])
+  const [lightboxImages, setLightboxImages] = useState<string[]>([])
+  const [lightboxIndex, setLightboxIndex] = useState(0)
   const commentImageRef = useRef<HTMLInputElement>(null)
+
+  const openLightbox = (images: string[], index: number) => {
+    setLightboxImages(images)
+    setLightboxIndex(index)
+  }
 
   const fetchCurrentUser = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -158,10 +270,7 @@ export default function PostPage() {
 
   const fetchReactions = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    const { data, count } = await supabase
-      .from("reactions")
-      .select("*", { count: "exact" })
-      .eq("post_id", id)
+    const { data, count } = await supabase.from("reactions").select("*", { count: "exact" }).eq("post_id", id)
     if (count !== null) setReactions(count)
     if (user && data) setHasReacted(data.some(r => r.user_id === user.id))
   }
@@ -193,18 +302,24 @@ export default function PostPage() {
         setViewers(Object.keys(state).length)
       })
       .subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          await channel.track({ user: Math.random() })
-        }
+        if (status === "SUBSCRIBED") await channel.track({ user: Math.random() })
       })
     return () => { supabase.removeChannel(channel) }
   }, [id])
 
   const handleCommentImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setCommentImage(file)
-    setCommentImagePreview(URL.createObjectURL(file))
+    const files = Array.from(e.target.files ?? [])
+    if (!files.length) return
+    const remaining = 4 - commentImages.length
+    const toAdd = files.slice(0, remaining)
+    setCommentImages(prev => [...prev, ...toAdd])
+    setCommentImagePreviews(prev => [...prev, ...toAdd.map(f => URL.createObjectURL(f))])
+    if (commentImageRef.current) commentImageRef.current.value = ""
+  }
+
+  const removeCommentImage = (index: number) => {
+    setCommentImages(prev => prev.filter((_, i) => i !== index))
+    setCommentImagePreviews(prev => prev.filter((_, i) => i !== index))
   }
 
   const handleComment = async () => {
@@ -212,21 +327,21 @@ export default function PostPage() {
     if (!user || !content) return
     if (post?.locked) return
 
-    let image_url = null
-    if (commentImage) {
-      const ext = commentImage.name.split(".").pop()
-      const path = `${user.id}/comments/${Date.now()}.${ext}`
-      const { error } = await supabase.storage.from("post-images").upload(path, commentImage)
+    const image_urls: string[] = []
+    for (const file of commentImages) {
+      const ext = file.name.split(".").pop()
+      const path = `${user.id}/comments/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const { error } = await supabase.storage.from("post-images").upload(path, file)
       if (!error) {
         const { data: urlData } = supabase.storage.from("post-images").getPublicUrl(path)
-        image_url = urlData.publicUrl
+        image_urls.push(urlData.publicUrl)
       }
     }
 
-    await supabase.from("comments").insert({ post_id: id, user_id: user.id, content, image_url })
+    await supabase.from("comments").insert({ post_id: id, user_id: user.id, content, image_urls })
     setContent("")
-    setCommentImage(null)
-    setCommentImagePreview(null)
+    setCommentImages([])
+    setCommentImagePreviews([])
     fetchComments()
   }
 
@@ -268,10 +383,11 @@ export default function PostPage() {
   return (
     <div className="max-w-4xl mx-auto w-full px-6 py-6 space-y-4">
 
-      <button
-        onClick={() => router.back()}
-        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
+      {lightboxImages.length > 0 && (
+        <Lightbox images={lightboxImages} startIndex={lightboxIndex} onClose={() => setLightboxImages([])} />
+      )}
+
+      <button onClick={() => router.back()} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="size-4" />
         Back
       </button>
@@ -281,10 +397,7 @@ export default function PostPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 flex-wrap">
               <div className="relative">
-                <button
-                  onClick={() => setActiveHover(activeHover === "post-author" ? null : "post-author")}
-                  className="flex items-center gap-2"
-                >
+                <button onClick={() => setActiveHover(activeHover === "post-author" ? null : "post-author")} className="flex items-center gap-2">
                   {post.profiles?.avatar_url ? (
                     <img src={post.profiles.avatar_url} className="size-7 rounded-full object-cover hover:ring-2 ring-primary transition-all" />
                   ) : (
@@ -295,17 +408,11 @@ export default function PostPage() {
                   </span>
                 </button>
                 {activeHover === "post-author" && currentUser && post.profiles && (
-                  <ProfileHoverCard
-                    profile={post.profiles}
-                    currentUserId={currentUser.id}
-                    onClose={() => setActiveHover(null)}
-                  />
+                  <ProfileHoverCard profile={post.profiles} currentUserId={currentUser.id} onClose={() => setActiveHover(null)} />
                 )}
               </div>
               <span className="text-muted-foreground">·</span>
-              <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-medium">
-                {post.flair}
-              </Badge>
+              <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-medium">{post.flair}</Badge>
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Clock className="size-3" />
                 {timeAgo(post.created_at)}
@@ -317,27 +424,19 @@ export default function PostPage() {
             </div>
           </div>
 
-          <h1 className="mt-4 font-serif text-2xl leading-snug text-foreground md:text-3xl">
-            {post.title}
-          </h1>
+          <h1 className="mt-4 font-serif text-2xl leading-snug text-foreground md:text-3xl">{post.title}</h1>
 
           <p className="mt-6 text-sm leading-relaxed text-muted-foreground border-t border-border pt-6">
             {post.content}
           </p>
 
-          {post.image_url && (
-  <img
-    src={post.image_url}
-    className="mt-4 w-full rounded-xl border border-border"
-    style={{ maxHeight: "600px", objectFit: "contain", background: "hsl(var(--muted))" }}
-  />
-)}
+          <ImageGrid
+            images={post.image_urls ?? []}
+            onView={(i) => openLightbox(post.image_urls ?? [], i)}
+          />
 
           <div className="mt-6 flex items-center gap-5 border-t border-border pt-5">
-            <button
-              onClick={handleReaction}
-              className={`flex items-center gap-1.5 text-xs transition-colors ${hasReacted ? "text-red-500" : "text-muted-foreground hover:text-red-500"}`}
-            >
+            <button onClick={handleReaction} className={`flex items-center gap-1.5 text-xs transition-colors ${hasReacted ? "text-red-500" : "text-muted-foreground hover:text-red-500"}`}>
               <Heart className={`size-3.5 ${hasReacted ? "fill-red-500" : ""}`} />
               {reactions}
             </button>
@@ -345,17 +444,11 @@ export default function PostPage() {
               <MessageCircle className="size-3.5" />
               {comments.length}
             </button>
-            <button
-              onClick={handleSave}
-              className={`flex items-center gap-1.5 text-xs transition-colors ml-auto ${isSaved ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
-            >
+            <button onClick={handleSave} className={`flex items-center gap-1.5 text-xs transition-colors ml-auto ${isSaved ? "text-primary" : "text-muted-foreground hover:text-primary"}`}>
               <Bookmark className={`size-3.5 ${isSaved ? "fill-primary" : ""}`} />
               {isSaved ? "Saved" : "Save"}
             </button>
-            <button
-              onClick={handleWatch}
-              className={`flex items-center gap-1.5 text-xs transition-colors ${isWatching ? "text-yellow-500" : "text-muted-foreground hover:text-yellow-500"}`}
-            >
+            <button onClick={handleWatch} className={`flex items-center gap-1.5 text-xs transition-colors ${isWatching ? "text-yellow-500" : "text-muted-foreground hover:text-yellow-500"}`}>
               <Bell className={`size-3.5 ${isWatching ? "fill-yellow-500" : ""}`} />
               {isWatching ? "Watching" : "Watch"}
             </button>
@@ -385,10 +478,7 @@ export default function PostPage() {
             <article key={comment.id} className="rounded-2xl border border-border bg-card p-4 md:p-6">
               <div className="flex items-center gap-2 mb-3">
                 <div className="relative">
-                  <button
-                    onClick={() => setActiveHover(activeHover === comment.id ? null : comment.id)}
-                    className="flex items-center gap-2"
-                  >
+                  <button onClick={() => setActiveHover(activeHover === comment.id ? null : comment.id)} className="flex items-center gap-2">
                     {comment.profiles?.avatar_url ? (
                       <img src={comment.profiles.avatar_url} className="size-6 rounded-full object-cover hover:ring-2 ring-primary transition-all" />
                     ) : (
@@ -399,24 +489,16 @@ export default function PostPage() {
                     </span>
                   </button>
                   {activeHover === comment.id && currentUser && comment.profiles && (
-                    <ProfileHoverCard
-                      profile={comment.profiles}
-                      currentUserId={currentUser.id}
-                      onClose={() => setActiveHover(null)}
-                    />
+                    <ProfileHoverCard profile={comment.profiles} currentUserId={currentUser.id} onClose={() => setActiveHover(null)} />
                   )}
                 </div>
-                <span className="text-xs text-muted-foreground ml-auto">
-                  {timeAgo(comment.created_at)}
-                </span>
+                <span className="text-xs text-muted-foreground ml-auto">{timeAgo(comment.created_at)}</span>
               </div>
               <p className="text-sm leading-relaxed text-muted-foreground">{comment.content}</p>
-              {comment.image_url && (
-                <img
-                  src={comment.image_url}
-                  className="mt-3 max-h-48 rounded-xl object-cover border border-border"
-                />
-              )}
+              <ImageGrid
+                images={comment.image_urls ?? []}
+                onView={(i) => openLightbox(comment.image_urls ?? [], i)}
+              />
             </article>
           ))}
         </div>
@@ -435,9 +517,7 @@ export default function PostPage() {
             ) : (
               <div className="size-7 rounded-full bg-muted" />
             )}
-            <span className="text-sm font-medium text-foreground">
-              @{currentProfile?.username ?? "Write a comment"}
-            </span>
+            <span className="text-sm font-medium text-foreground">@{currentProfile?.username ?? "Write a comment"}</span>
           </div>
           <textarea
             value={content}
@@ -445,39 +525,43 @@ export default function PostPage() {
             placeholder="Share your thoughts anonymously..."
             className="w-full border rounded-xl p-3 mb-3 h-24 resize-none bg-background text-sm"
           />
-          {commentImagePreview && (
-            <div className="relative mb-3 inline-block">
-              <img src={commentImagePreview} className="max-h-40 rounded-xl object-cover border border-border" />
-              <button
-                onClick={() => { setCommentImage(null); setCommentImagePreview(null) }}
-                className="absolute -top-2 -right-2 size-5 rounded-full bg-foreground text-background flex items-center justify-center"
-              >
-                <XIcon className="size-3" />
-              </button>
+          {commentImagePreviews.length > 0 && (
+            <div className="flex gap-2 flex-wrap mb-3">
+              {commentImagePreviews.map((preview, i) => (
+                <div key={i} className="relative">
+                  <img src={preview} className="size-16 rounded-xl object-cover border border-border" />
+                  <button
+                    onClick={() => removeCommentImage(i)}
+                    className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-foreground text-background flex items-center justify-center"
+                  >
+                    <XIcon className="size-3" />
+                  </button>
+                </div>
+              ))}
+              {commentImages.length < 4 && (
+                <button
+                  onClick={() => commentImageRef.current?.click()}
+                  className="size-16 rounded-xl border-2 border-dashed border-border flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground"
+                >
+                  <ImagePlus className="size-4" />
+                </button>
+              )}
             </div>
           )}
           <div className="flex items-center gap-2">
-            <Button onClick={handleComment} className="rounded-full">
-              Comment
-            </Button>
-            <button
-              onClick={() => commentImageRef.current?.click()}
-              className="p-2 rounded-full border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-              title="Add image or GIF"
-            >
-              <ImagePlus className="size-4" />
-            </button>
-            <input
-              ref={commentImageRef}
-              type="file"
-              accept="image/*,.gif"
-              className="hidden"
-              onChange={handleCommentImageSelect}
-            />
+            <Button onClick={handleComment} className="rounded-full">Comment</Button>
+            {commentImages.length === 0 && (
+              <button
+                onClick={() => commentImageRef.current?.click()}
+                className="p-2 rounded-full border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              >
+                <ImagePlus className="size-4" />
+              </button>
+            )}
+            <input ref={commentImageRef} type="file" accept="image/*,.gif" multiple className="hidden" onChange={handleCommentImageSelect} />
           </div>
         </article>
       )}
-
     </div>
   )
 }

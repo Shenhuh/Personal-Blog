@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Camera, Check, X, Pencil, Trash2, Lock, Unlock, AlertCircle } from "lucide-react"
+import { Camera, Check, X, Pencil, Trash2, Lock, Unlock, AlertCircle, Image as ImageIcon } from "lucide-react"
 import { timeAgo } from "@/lib/timeAgo"
 
 export default function ProfilePage() {
@@ -49,6 +49,7 @@ export default function ProfilePage() {
   const fetchPosts = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+    // Ensure we select image_urls (the array)
     const { data } = await supabase
       .from("posts")
       .select("*, reactions(count), comments(count)")
@@ -137,7 +138,6 @@ export default function ProfilePage() {
         <h2 className="text-lg font-bold mb-6">Profile</h2>
 
         <div className="flex items-start gap-6 mb-6">
-          {/* Avatar */}
           <div className="relative shrink-0">
             {profile?.avatar_url ? (
               <img src={profile.avatar_url} className="size-20 rounded-full object-cover" />
@@ -158,7 +158,6 @@ export default function ProfilePage() {
           </div>
 
           <div className="flex-1 space-y-4">
-            {/* Username */}
             <div>
               <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Username</label>
               <div className="flex items-center gap-2">
@@ -179,18 +178,8 @@ export default function ProfilePage() {
                   Save
                 </Button>
               </div>
-              <p className="text-xs mt-1.5">
-                {usernameStatus === "available" && <span className="text-green-500">Username is available!</span>}
-                {usernameStatus === "taken" && <span className="text-red-500">Username is already taken</span>}
-                {usernameStatus === "checking" && <span className="text-muted-foreground">Checking availability...</span>}
-                {usernameStatus === "same" && <span className="text-muted-foreground">This is your current username</span>}
-                {usernameStatus === "idle" && username.length > 0 && username.length < 3 && (
-                  <span className="text-muted-foreground flex items-center gap-1"><AlertCircle className="size-3" /> At least 3 characters required</span>
-                )}
-              </p>
             </div>
 
-            {/* Bio */}
             <div>
               <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Bio</label>
               {editingBio ? (
@@ -211,10 +200,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
               ) : (
-                <div
-                  onClick={() => setEditingBio(true)}
-                  className="flex items-start gap-2 cursor-pointer group"
-                >
+                <div onClick={() => setEditingBio(true)} className="flex items-start gap-2 cursor-pointer group">
                   <p className="text-sm text-muted-foreground flex-1 min-h-8">
                     {bio || <span className="italic">No bio yet — click to add one</span>}
                   </p>
@@ -225,7 +211,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Followers / Following */}
         <div className="flex items-center gap-6 pt-4 border-t border-border">
           <div className="text-center">
             <p className="text-lg font-bold text-foreground">{followerCount}</p>
@@ -242,7 +227,7 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* My Posts */}
+      {/* My Posts Section */}
       <div className="rounded-2xl border border-border bg-card p-6 md:p-8">
         <h2 className="text-lg font-bold mb-6">My Posts</h2>
 
@@ -255,7 +240,7 @@ export default function ProfilePage() {
 
         <div className="space-y-4">
           {posts.map(post => (
-            <div key={post.id} className="rounded-xl border border-border p-4">
+            <div key={post.id} className="rounded-xl border border-border p-4 bg-card shadow-sm">
               {editingPost?.id === post.id ? (
                 <div className="space-y-3">
                   <input
@@ -276,19 +261,37 @@ export default function ProfilePage() {
               ) : (
                 <>
                   <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <Badge variant="secondary" className="rounded-full text-xs px-2 py-0.5">{post.flair}</Badge>
+                        <Badge variant="secondary" className="rounded-full text-[10px] px-2 py-0">
+                          {post.flair}
+                        </Badge>
                         {post.locked && (
-                          <span className="text-xs text-orange-500 flex items-center gap-1">
-                            <Lock className="size-3" /> Comments locked
+                          <span className="text-[10px] text-orange-500 flex items-center gap-1">
+                            <Lock className="size-3" /> Locked
                           </span>
                         )}
-                        <span className="text-xs text-muted-foreground">{timeAgo(post.created_at)}</span>
+                        <span className="text-[10px] text-muted-foreground">{timeAgo(post.created_at)}</span>
                       </div>
                       <h3 className="text-sm font-semibold text-foreground">{post.title}</h3>
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{post.content}</p>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-3 leading-relaxed">{post.content}</p>
+
+                      {/* FIXED IMAGE RENDERING: Support image_urls array */}
+                      {post.image_urls && post.image_urls.length > 0 && (
+                        <div className={`mt-3 grid gap-2 ${post.image_urls.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                          {post.image_urls.map((url: string, idx: number) => (
+                            <div key={idx} className="rounded-lg overflow-hidden border border-border bg-muted/30 aspect-video relative group">
+                               <img 
+                                src={url} 
+                                alt={`Post content ${idx + 1}`} 
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
+
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => { setEditingPost(post); setEditTitle(post.title); setEditContent(post.content) }}
@@ -311,8 +314,12 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border">
-                    <span className="text-xs text-muted-foreground">♥ {post.reactions[0]?.count ?? 0}</span>
-                    <span className="text-xs text-muted-foreground">💬 {post.comments[0]?.count ?? 0}</span>
+                    <span className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
+                      ❤️ {post.reactions[0]?.count ?? 0}
+                    </span>
+                    <span className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
+                      💬 {post.comments[0]?.count ?? 0}
+                    </span>
                   </div>
                 </>
               )}
@@ -320,7 +327,6 @@ export default function ProfilePage() {
           ))}
         </div>
       </div>
-
     </div>
   )
 }
