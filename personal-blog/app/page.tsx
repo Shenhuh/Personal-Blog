@@ -2,8 +2,10 @@ import Header from "@/components/Header"
 import { Hero } from "@/components/Hero"
 import { RecentPosts } from "@/components/RecentPost"
 import Footer from "@/components/Footer"
+import { redirect } from "next/navigation"
 
 export default function Home() {
+    redirect("/feed")
   return (
     <div className="min-h-screen bg-background">
      
