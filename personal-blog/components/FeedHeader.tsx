@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { Search, Bell, Heart, MessageCircle, Users, Menu } from "lucide-react"
 import { timeAgo } from "@/lib/timeAgo"
-// Import the SidebarTrigger from your shadcn components
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
 export default function FeedHeader() {
@@ -60,31 +59,45 @@ export default function FeedHeader() {
   }
 
   const handleNotificationClick = (n: any) => {
-    if (n.type === "follow") {
-      router.push(`/feed/user/${n.actor_id}`)
-    } else if (n.post_id) {
-      router.push(`/feed/${n.post_id}`)
-    }
+    if (n.type === "follow") router.push(`/feed/user/${n.actor_id}`)
+    else if (n.post_id) router.push(`/feed/${n.post_id}`)
     setShowPopup(false)
   }
 
+  // Close notification popup on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node))
         setShowPopup(false)
-      }
     }
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  // Listen for avatar changes from the profile page
+  useEffect(() => {
+    const onAvatarUpdated = (e: Event) => {
+      const url = (e as CustomEvent<{ avatar_url: string }>).detail?.avatar_url
+      if (url) setAvatar(url)
+    }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "live_avatar_url" && e.newValue) setAvatar(e.newValue)
+    }
+    window.addEventListener("avatar-updated", onAvatarUpdated)
+    window.addEventListener("storage", onStorage)
+    return () => {
+      window.removeEventListener("avatar-updated", onAvatarUpdated)
+      window.removeEventListener("storage", onStorage)
+    }
+  }, [])
+
+  // Load profile on mount — prefer localStorage cached avatar for instant display
   useEffect(() => {
     let channel: any = null
 
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-
       setUserId(user.id)
 
       const { data: profileData } = await supabase
@@ -92,45 +105,39 @@ export default function FeedHeader() {
         .select("username, avatar_url")
         .eq("id", user.id)
         .single()
+
       if (profileData) {
         setUsername(profileData.username)
-        setAvatar(profileData.avatar_url ?? "")
+        // Prefer live_avatar_url from localStorage if it exists (means user updated recently)
+        const cached = localStorage.getItem("live_avatar_url")
+        setAvatar(cached || profileData.avatar_url || "")
       }
 
       await fetchNotifications(user.id)
 
       channel = supabase
         .channel(`notif-header-${user.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${user.id}`
-          },
-          (payload) => {
-            fetchNotifications(user.id)
-          }
-        )
+        .on("postgres_changes", {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`
+        }, () => fetchNotifications(user.id))
         .subscribe()
     }
 
     init()
-
-    return () => {
-      if (channel) supabase.removeChannel(channel)
-    }
+    return () => { if (channel) supabase.removeChannel(channel) }
   }, [])
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur px-4 md:px-6 py-3">
       <div className="max-w-4xl mx-auto flex items-center gap-2 md:gap-4">
-        
+
         {/* MOBILE SIDEBAR TRIGGER */}
         <div className="md:hidden flex items-center">
           <SidebarTrigger>
-             <Menu className="size-5 text-muted-foreground" />
+            <Menu className="size-5 text-muted-foreground" />
           </SidebarTrigger>
         </div>
 
@@ -144,6 +151,7 @@ export default function FeedHeader() {
         </div>
 
         <div className="flex items-center gap-2 md:gap-3 ml-auto">
+
           {/* NOTIFICATIONS */}
           <div className="relative" ref={popupRef}>
             <button
@@ -192,13 +200,9 @@ export default function FeedHeader() {
                             <div className="size-8 rounded-full bg-muted mt-0.5" />
                           )}
                           <div className={`absolute -bottom-0.5 -right-0.5 size-4 rounded-full flex items-center justify-center ${getIconBg(n.type)}`}>
-                            {n.type === "reaction" ? (
-                              <Heart className="size-2 text-white" />
-                            ) : n.type === "follow" ? (
-                              <Users className="size-2 text-white" />
-                            ) : (
-                              <MessageCircle className="size-2 text-white" />
-                            )}
+                            {n.type === "reaction" ? <Heart className="size-2 text-white" />
+                              : n.type === "follow" ? <Users className="size-2 text-white" />
+                              : <MessageCircle className="size-2 text-white" />}
                           </div>
                         </div>
                         <div className="min-w-0 flex-1">
@@ -211,9 +215,7 @@ export default function FeedHeader() {
                           )}
                           <p className="text-[10px] text-muted-foreground mt-1">{timeAgo(n.created_at)}</p>
                         </div>
-                        {!n.is_read && (
-                          <div className="size-2 rounded-full bg-primary shrink-0 mt-1.5" />
-                        )}
+                        {!n.is_read && <div className="size-2 rounded-full bg-primary shrink-0 mt-1.5" />}
                       </button>
                     ))
                   )}
@@ -231,15 +233,13 @@ export default function FeedHeader() {
             )}
           </div>
 
-          {/* USER AVATAR SECTION */}
+          {/* USER AVATAR */}
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
               <p className="text-xs text-muted-foreground">Logged in as</p>
               <p className="text-sm font-medium text-foreground">@{username}</p>
             </div>
-            
-            {/* Clickable Avatar */}
-            <button 
+            <button
               onClick={() => router.push("/feed/profile")}
               className="flex items-center justify-center shrink-0 rounded-full hover:ring-2 hover:ring-primary/20 transition-all"
             >
@@ -247,7 +247,7 @@ export default function FeedHeader() {
                 <img src={avatar} className="size-8 rounded-full object-cover shadow-sm" alt="Profile" />
               ) : (
                 <div className="size-8 rounded-full bg-muted flex items-center justify-center">
-                   <Users className="size-4 text-muted-foreground" />
+                  <Users className="size-4 text-muted-foreground" />
                 </div>
               )}
             </button>

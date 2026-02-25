@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -18,14 +18,12 @@ function formatJoinDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-US", { month: "long", year: "numeric" })
 }
 
-// ── INLINE DRAGGABLE IMAGE ───────────────────────────────────────────────────
+// ── DRAGGABLE IMAGE ──────────────────────────────────────────────────────────
 interface DraggableImageProps {
-  /** The objectPosition value, e.g. "50% 30%" */
   position: { x: number; y: number }
   onChange: (pos: { x: number; y: number }) => void
   src: string
   className?: string
-  /** aspect ratio container class — caller controls the outer box */
   editing: boolean
 }
 
@@ -44,7 +42,6 @@ function DraggableImage({ src, position, onChange, className, editing }: Draggab
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging.current || !containerRef.current) return
     const rect = containerRef.current.getBoundingClientRect()
-    // Convert pixel drag to percentage of container
     const dx = ((e.clientX - start.current.mx) / rect.width) * 100
     const dy = ((e.clientY - start.current.my) / rect.height) * 100
     onChange({
@@ -64,7 +61,6 @@ function DraggableImage({ src, position, onChange, className, editing }: Draggab
           objectPosition: `${position.x}% ${position.y}%`,
           cursor: editing ? "grab" : "default",
           userSelect: "none",
-          draggable: false,
         } as React.CSSProperties}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -72,7 +68,6 @@ function DraggableImage({ src, position, onChange, className, editing }: Draggab
         onPointerLeave={onPointerUp}
         onDragStart={e => e.preventDefault()}
       />
-      {/* Editing overlay hint */}
       {editing && (
         <div className="absolute inset-0 pointer-events-none border-2 border-primary/60 ring-2 ring-primary/20">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-1.5 bg-black/60 text-white text-xs font-medium px-3 py-1.5 rounded-full backdrop-blur-sm">
@@ -80,6 +75,140 @@ function DraggableImage({ src, position, onChange, className, editing }: Draggab
             Drag to reposition
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── POPOVER MENU (small floating, anchored) ──────────────────────────────────
+interface PopoverMenuProps {
+  open: boolean
+  onClose: () => void
+  anchorRef: React.RefObject<HTMLElement | null>
+  hasImage: boolean
+  onView?: () => void
+  onChange: () => void
+  onReposition?: () => void
+  // Mobile reposition mode — shows draggable preview inside popover
+  repositionMode?: boolean
+  repositionSrc?: string | null
+  repositionPos?: { x: number; y: number }
+  onRepositionChange?: (pos: { x: number; y: number }) => void
+  onRepositionSave?: () => void
+  onRepositionCancel?: () => void
+  uploading?: boolean
+}
+
+function PopoverMenu({
+  open, onClose, anchorRef, hasImage,
+  onView, onChange, onReposition,
+  repositionMode, repositionSrc, repositionPos, onRepositionChange,
+  onRepositionSave, onRepositionCancel, uploading,
+}: PopoverMenuProps) {
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const [style, setStyle] = useState<React.CSSProperties>({})
+
+  // Position popover below anchor — re-runs on scroll/resize so it always tracks
+  useEffect(() => {
+    if (!open) return
+    const update = () => {
+      if (!anchorRef.current) return
+      const anchor = (anchorRef.current as HTMLElement).getBoundingClientRect()
+      const popW = repositionMode ? 288 : 192
+      let left = anchor.left + anchor.width / 2 - popW / 2
+      left = Math.max(8, Math.min(left, window.innerWidth - popW - 8))
+      setStyle({ position: "fixed", top: anchor.bottom + 8, left, width: popW, zIndex: 50 })
+    }
+    update()
+    window.addEventListener("scroll", update, true)
+    window.addEventListener("resize", update)
+    return () => {
+      window.removeEventListener("scroll", update, true)
+      window.removeEventListener("resize", update)
+    }
+  }, [open, anchorRef, repositionMode])
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (
+        popoverRef.current && !popoverRef.current.contains(e.target as Node) &&
+        anchorRef.current && !anchorRef.current.contains(e.target as Node)
+      ) onClose()
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [open, onClose, anchorRef])
+
+  if (!open) return null
+
+  // Reposition mode: show draggable image preview + save/cancel inside popover
+  if (repositionMode && repositionSrc && repositionPos && onRepositionChange) {
+    return (
+      <div ref={popoverRef} style={style} className="bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
+          <span className="text-xs font-semibold text-foreground">Drag to reposition</span>
+          <button onClick={onRepositionCancel} className="text-muted-foreground hover:text-foreground p-0.5">
+            <X className="size-3.5" />
+          </button>
+        </div>
+        <DraggableImage
+          src={repositionSrc}
+          position={repositionPos}
+          onChange={onRepositionChange}
+          editing={true}
+          className="w-full h-40"
+        />
+        <div className="flex gap-2 p-2.5">
+          <button
+            onClick={onRepositionCancel}
+            className="flex-1 py-2 rounded-lg bg-muted hover:bg-muted/80 text-xs font-medium text-muted-foreground transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onRepositionSave}
+            disabled={uploading}
+            className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-medium transition-colors disabled:opacity-70 flex items-center justify-center gap-1"
+          >
+            {uploading
+              ? <span className="size-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : <Check className="size-3" />}
+            {uploading ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Normal menu
+  return (
+    <div ref={popoverRef} style={style} className="bg-card border border-border rounded-xl shadow-xl overflow-hidden py-1">
+      {hasImage && onView && (
+        <button
+          onClick={() => { onView(); onClose() }}
+          className="flex items-center gap-2.5 w-full px-3 py-2.5 hover:bg-muted transition-colors text-sm text-foreground"
+        >
+          <Eye className="size-4 text-muted-foreground shrink-0" />
+          View photo
+        </button>
+      )}
+      <button
+        onClick={() => { onChange(); onClose() }}
+        className="flex items-center gap-2.5 w-full px-3 py-2.5 hover:bg-muted transition-colors text-sm text-foreground"
+      >
+        <Camera className="size-4 text-muted-foreground shrink-0" />
+        {hasImage ? "Change photo" : "Upload photo"}
+      </button>
+      {hasImage && onReposition && (
+        <button
+          onClick={onReposition}
+          className="flex items-center gap-2.5 w-full px-3 py-2.5 hover:bg-muted transition-colors text-sm text-foreground"
+        >
+          <Move className="size-4 text-muted-foreground shrink-0" />
+          Reposition
+        </button>
       )}
     </div>
   )
@@ -109,15 +238,31 @@ export default function ProfilePage() {
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [coverUploading, setCoverUploading] = useState(false)
 
-  // Inline editing states
-  const [avatarOverlayOpen, setAvatarOverlayOpen] = useState(false)
+  // Popover open state
+  const [avatarPopoverOpen, setAvatarPopoverOpen] = useState(false)
+  const [coverPopoverOpen, setCoverPopoverOpen] = useState(false)
+  // Mobile: reposition inside the popover
+  const [avatarRepositionInPopover, setAvatarRepositionInPopover] = useState(false)
+  const [coverRepositionInPopover, setCoverRepositionInPopover] = useState(false)
+
+  // Anchor refs for popover
+  const avatarAnchorRef = useRef<HTMLButtonElement>(null)
+  const coverAnchorRef = useRef<HTMLElement | null>(null)
+
+  // Lightbox
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
-  const [coverOverlayOpen, setCoverOverlayOpen] = useState(false)
+
+  // Desktop drag-on-banner reposition mode
   const [editingCover, setEditingCover] = useState(false)
   const [editingAvatar, setEditingAvatar] = useState(false)
+
   const [coverPos, setCoverPos] = useState({ x: 50, y: 50 })
   const [avatarPos, setAvatarPos] = useState({ x: 50, y: 50 })
-  // Pending new image files (before save)
+  // Temp pos for inside-popover reposition (committed on Save)
+  const [tempAvatarPos, setTempAvatarPos] = useState({ x: 50, y: 50 })
+  const [tempCoverPos, setTempCoverPos] = useState({ x: 50, y: 50 })
+
+  // Pending uploads
   const [pendingCoverSrc, setPendingCoverSrc] = useState<string | null>(null)
   const [pendingAvatarSrc, setPendingAvatarSrc] = useState<string | null>(null)
   const [pendingCoverBlob, setPendingCoverBlob] = useState<File | null>(null)
@@ -130,6 +275,8 @@ export default function ProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const coverInputRef = useRef<HTMLInputElement>(null)
   const usernameTimeout = useRef<NodeJS.Timeout | null>(null)
+
+  const isMobile = () => typeof window !== "undefined" && window.innerWidth < 640
 
   const fetchProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -203,106 +350,141 @@ export default function ProfilePage() {
     fetchProfile()
   }
 
-  // Cover: pick file → enter drag mode immediately
+  // ── COVER ────────────────────────────────────────────────────────────────
   const handleCoverFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setPendingCoverBlob(file)
     setPendingCoverSrc(URL.createObjectURL(file))
-    setCoverPos({ x: 50, y: 50 })
-    setEditingCover(true)
+    const initPos = { x: 50, y: 50 }
+    setCoverPos(initPos)
+    if (isMobile()) {
+      setTempCoverPos(initPos)
+      setCoverRepositionInPopover(true)
+      setCoverPopoverOpen(true)
+    } else {
+      setEditingCover(true)
+    }
     e.target.value = ""
   }
 
-  // If already have a cover, just enter reposition mode without picking new file
-  const handleEditCoverPosition = () => {
-    setEditingCover(true)
+  const handleCoverReposition = () => {
+    if (isMobile()) {
+      setTempCoverPos({ ...coverPos })
+      setCoverRepositionInPopover(true)
+      // keep popover open, switch to reposition view
+    } else {
+      setCoverPopoverOpen(false)
+      setEditingCover(true)
+    }
   }
 
   const handleSaveCover = async () => {
+    const finalPos = coverRepositionInPopover ? tempCoverPos : coverPos
     setEditingCover(false)
+    setCoverRepositionInPopover(false)
+    setCoverPopoverOpen(false)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     setCoverUploading(true)
     if (pendingCoverBlob) {
-      // Upload new file
       const ext = pendingCoverBlob.name.split(".").pop()
-      const path = `${user.id}/cover.${ext}`
+      const path = `${user.id}/cover-${Date.now()}.${ext}`
       const { error } = await supabase.storage.from("avatars").upload(path, pendingCoverBlob, { upsert: true })
       if (!error) {
         const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path)
-        const freshUrl = `${urlData.publicUrl}?t=${Date.now()}`
-        await supabase.from("profiles").update({
-          cover_url: freshUrl,
-          cover_position: coverPos,
-        }).eq("id", user.id)
-        // Update local state directly — do NOT call fetchProfile() which would
-        // re-read a potentially stale/cached URL from the DB and revert the image
-        setProfile((prev: any) => ({ ...prev, cover_url: freshUrl, cover_position: coverPos }))
+        const freshUrl = urlData.publicUrl
+        await supabase.from("profiles").update({ cover_url: freshUrl, cover_position: finalPos }).eq("id", user.id)
+        setProfile((prev: any) => ({ ...prev, cover_url: freshUrl, cover_position: finalPos }))
+        setCoverPos(finalPos)
       }
       setPendingCoverBlob(null)
       setPendingCoverSrc(null)
     } else {
-      // Just save new position
-      await supabase.from("profiles").update({ cover_position: coverPos }).eq("id", user.id)
+      setCoverPos(finalPos)
+      await supabase.from("profiles").update({ cover_position: finalPos }).eq("id", user.id)
+      setProfile((prev: any) => ({ ...prev, cover_position: finalPos }))
     }
     setCoverUploading(false)
   }
 
   const handleCancelCover = () => {
     setEditingCover(false)
+    setCoverRepositionInPopover(false)
+    setCoverPopoverOpen(false)
     setPendingCoverSrc(null)
     setPendingCoverBlob(null)
-    // Reset position to saved
     if (profile?.cover_position) setCoverPos(profile.cover_position)
     else setCoverPos({ x: 50, y: 50 })
   }
 
-  // Avatar: pick file → enter drag mode immediately
+  // ── AVATAR ───────────────────────────────────────────────────────────────
   const handleAvatarFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setPendingAvatarBlob(file)
     setPendingAvatarSrc(URL.createObjectURL(file))
-    setAvatarPos({ x: 50, y: 50 })
-    setEditingAvatar(true)
+    const initPos = { x: 50, y: 50 }
+    setAvatarPos(initPos)
+    if (isMobile()) {
+      setTempAvatarPos(initPos)
+      setAvatarRepositionInPopover(true)
+      setAvatarPopoverOpen(true)
+    } else {
+      setEditingAvatar(true)
+    }
     e.target.value = ""
   }
 
-  const handleEditAvatarPosition = () => {
-    setEditingAvatar(true)
+  const handleAvatarReposition = () => {
+    if (isMobile()) {
+      setTempAvatarPos({ ...avatarPos })
+      setAvatarRepositionInPopover(true)
+      // keep popover open, switch to reposition view
+    } else {
+      setAvatarPopoverOpen(false)
+      setEditingAvatar(true)
+    }
   }
 
   const handleSaveAvatar = async () => {
+    const finalPos = avatarRepositionInPopover ? tempAvatarPos : avatarPos
     setEditingAvatar(false)
+    setAvatarRepositionInPopover(false)
+    setAvatarPopoverOpen(false)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     setAvatarUploading(true)
     if (pendingAvatarBlob) {
       const ext = pendingAvatarBlob.name.split(".").pop()
-      const path = `${user.id}/avatar.${ext}`
+      const path = `${user.id}/avatar-${Date.now()}.${ext}`
       const { error } = await supabase.storage.from("avatars").upload(path, pendingAvatarBlob, { upsert: true })
       if (!error) {
         const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path)
-        const freshUrl = `${urlData.publicUrl}?t=${Date.now()}`
-        await supabase.from("profiles").update({
-          avatar_url: freshUrl,
-          avatar_position: avatarPos,
-        }).eq("id", user.id)
-        // Update local state directly — do NOT call fetchProfile() which would
-        // re-read a potentially stale/cached URL from the DB and revert the image
-        setProfile((prev: any) => ({ ...prev, avatar_url: freshUrl, avatar_position: avatarPos }))
+        const freshUrl = urlData.publicUrl
+        await supabase.from("profiles").update({ avatar_url: freshUrl, avatar_position: finalPos }).eq("id", user.id)
+        setProfile((prev: any) => ({ ...prev, avatar_url: freshUrl, avatar_position: finalPos }))
+        setAvatarPos(finalPos)
+        // Notify other components (header, post cards) that avatar changed
+        // Broadcast to all components via both custom event and localStorage
+        localStorage.setItem("live_avatar_url", freshUrl)
+        window.dispatchEvent(new CustomEvent("avatar-updated", { detail: { avatar_url: freshUrl } }))
+        window.dispatchEvent(new StorageEvent("storage", { key: "live_avatar_url", newValue: freshUrl }))
       }
       setPendingAvatarBlob(null)
       setPendingAvatarSrc(null)
     } else {
-      await supabase.from("profiles").update({ avatar_position: avatarPos }).eq("id", user.id)
+      setAvatarPos(finalPos)
+      await supabase.from("profiles").update({ avatar_position: finalPos }).eq("id", user.id)
+      setProfile((prev: any) => ({ ...prev, avatar_position: finalPos }))
     }
     setAvatarUploading(false)
   }
 
   const handleCancelAvatar = () => {
     setEditingAvatar(false)
+    setAvatarRepositionInPopover(false)
+    setAvatarPopoverOpen(false)
     setPendingAvatarSrc(null)
     setPendingAvatarBlob(null)
     if (profile?.avatar_position) setAvatarPos(profile.avatar_position)
@@ -383,6 +565,42 @@ export default function ProfilePage() {
         </div>
       )}
 
+      {/* ── AVATAR POPOVER ── */}
+      <PopoverMenu
+        open={avatarPopoverOpen}
+        onClose={handleCancelAvatar}
+        anchorRef={avatarAnchorRef as React.RefObject<HTMLElement | null>}
+        hasImage={!!profile?.avatar_url}
+        onView={profile?.avatar_url ? () => { setLightboxSrc(profile.avatar_url); setAvatarPopoverOpen(false) } : undefined}
+        onChange={() => fileInputRef.current?.click()}
+        onReposition={profile?.avatar_url ? handleAvatarReposition : undefined}
+        repositionMode={avatarRepositionInPopover}
+        repositionSrc={avatarSrc}
+        repositionPos={tempAvatarPos}
+        onRepositionChange={setTempAvatarPos}
+        onRepositionSave={handleSaveAvatar}
+        onRepositionCancel={handleCancelAvatar}
+        uploading={avatarUploading}
+      />
+
+      {/* ── COVER POPOVER ── */}
+      <PopoverMenu
+        open={coverPopoverOpen}
+        onClose={handleCancelCover}
+        anchorRef={coverAnchorRef}
+        hasImage={!!profile?.cover_url}
+        onView={profile?.cover_url ? () => { setLightboxSrc(profile.cover_url); setCoverPopoverOpen(false) } : undefined}
+        onChange={() => coverInputRef.current?.click()}
+        onReposition={profile?.cover_url ? handleCoverReposition : undefined}
+        repositionMode={coverRepositionInPopover}
+        repositionSrc={coverSrc}
+        repositionPos={tempCoverPos}
+        onRepositionChange={setTempCoverPos}
+        onRepositionSave={handleSaveCover}
+        onRepositionCancel={handleCancelCover}
+        uploading={coverUploading}
+      />
+
       {/* ── COVER PHOTO BANNER ── */}
       <div className="relative w-full h-44 sm:h-56 md:h-64 bg-muted group/cover">
 
@@ -399,22 +617,12 @@ export default function ProfilePage() {
           <div className="w-full h-full bg-gradient-to-br from-primary/20 via-primary/5 to-muted" />
         )}
 
-        {/* Tap zone for mobile — toggles cover buttons */}
-        {!editingCover && (
-          <button
-            className="absolute inset-0 w-full h-full bg-transparent sm:hidden"
-            onClick={() => setCoverOverlayOpen(v => !v)}
-            aria-label="Show cover options"
-          />
-        )}
-
-        {/* Fade to page bg */}
         {!editingCover && (
           <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-background to-transparent pointer-events-none" />
         )}
 
-        {/* Cover action buttons — visible on hover */}
-        <div className={`absolute bottom-4 right-4 flex items-center gap-2 transition-opacity duration-200 ${editingCover || coverOverlayOpen ? "opacity-100" : "opacity-0 group-hover/cover:opacity-100"}`}>
+        {/* Cover action buttons */}
+        <div className={`absolute bottom-4 right-4 flex items-center gap-2 transition-opacity duration-200 ${editingCover ? "opacity-100" : "opacity-0 group-hover/cover:opacity-100"}`}>
           {editingCover ? (
             <>
               <button
@@ -425,36 +633,39 @@ export default function ProfilePage() {
               </button>
               <button
                 onClick={handleSaveCover}
-                className="flex items-center gap-1.5 text-xs font-medium px-3.5 py-2 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md transition-all"
+                disabled={coverUploading}
+                className="flex items-center gap-1.5 text-xs font-medium px-3.5 py-2 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md transition-all disabled:opacity-70"
               >
                 {coverUploading
                   ? <span className="size-3 border border-white border-t-transparent rounded-full animate-spin" />
                   : <Check className="size-3.5" />}
-                {coverUploading ? "Saving..." : "Save position"}
+                {coverUploading ? "Saving..." : "Save"}
               </button>
             </>
           ) : (
-            <>
-              {/* Reposition existing cover */}
-              {profile?.cover_url && (
-                <button
-                  onClick={handleEditCoverPosition}
-                  className="flex items-center gap-1.5 text-xs font-medium px-3.5 py-2 rounded-full bg-background/90 hover:bg-background text-foreground border border-border shadow-md transition-all"
-                >
-                  <Move className="size-3.5" /> Reposition
-                </button>
-              )}
-              {/* Upload new cover */}
-              <button
-                onClick={() => coverInputRef.current?.click()}
-                className="flex items-center gap-1.5 text-xs font-medium px-3.5 py-2 rounded-full bg-background/90 hover:bg-background text-foreground border border-border shadow-md transition-all"
-              >
-                <Camera className="size-3.5" />
-                {profile?.cover_url ? "Change cover" : "Add cover"}
-              </button>
-            </>
+            <button
+              ref={coverAnchorRef as React.RefObject<HTMLButtonElement>}
+              onClick={() => setCoverPopoverOpen(v => !v)}
+              className="flex items-center gap-1.5 text-xs font-medium px-3.5 py-2 rounded-full bg-background/90 hover:bg-background text-foreground border border-border shadow-md transition-all"
+            >
+              <Camera className="size-3.5" />
+              {profile?.cover_url ? "Edit cover" : "Add cover"}
+            </button>
           )}
         </div>
+
+        {/* Invisible anchor point for cover popover positioning on mobile */}
+        <span ref={coverAnchorRef as React.RefObject<HTMLSpanElement>} className="absolute bottom-0 left-1/2 -translate-x-1/2 pointer-events-none" />
+
+        {/* Mobile tap zone */}
+        {!editingCover && (
+          <button
+            className="absolute inset-0 w-full h-full bg-transparent sm:hidden"
+            onClick={() => setCoverPopoverOpen(v => !v)}
+            aria-label="Cover photo options"
+          />
+        )}
+
         <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverFileSelect} />
       </div>
 
@@ -479,8 +690,8 @@ export default function ProfilePage() {
               <div className="size-20 sm:size-24 md:size-28 rounded-2xl bg-muted border-4 border-background shadow-lg" />
             )}
 
-            {/* Avatar hover overlay — View / Change / Reposition */}
-            {editingAvatar ? (
+            {/* Desktop drag-mode save/cancel */}
+            {editingAvatar && (
               <div className="absolute -bottom-9 left-0 flex items-center gap-1.5 z-10">
                 <button
                   onClick={handleCancelAvatar}
@@ -490,46 +701,29 @@ export default function ProfilePage() {
                 </button>
                 <button
                   onClick={handleSaveAvatar}
-                  className="flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full bg-primary text-primary-foreground shadow transition-all"
+                  disabled={avatarUploading}
+                  className="flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full bg-primary text-primary-foreground shadow transition-all disabled:opacity-70"
                 >
                   {avatarUploading
                     ? <span className="size-2.5 border border-white border-t-transparent rounded-full animate-spin" />
                     : <Check className="size-3" />}
-                  Save
+                  {avatarUploading ? "Saving..." : "Save"}
                 </button>
-              </div>
-            ) : (
-              <div
-                className={`absolute inset-0 rounded-2xl transition-all duration-200 flex flex-col items-center justify-center gap-1.5 cursor-pointer select-none ${avatarOverlayOpen ? "bg-black/55 opacity-100" : "bg-black/0 opacity-0 hover:bg-black/55 hover:opacity-100"}`}
-                onClick={() => setAvatarOverlayOpen(v => !v)}
-              >
-                {/* View */}
-                {avatarSrc && (
-                  <button
-                    onClick={e => { e.stopPropagation(); setLightboxSrc(profile?.avatar_url ?? avatarSrc); setAvatarOverlayOpen(false) }}
-                    className="flex items-center gap-1 text-[11px] font-semibold text-white px-2.5 py-1 rounded-full bg-white/20 active:bg-white/40 transition-all backdrop-blur-sm"
-                  >
-                    <Eye className="size-3" /> View
-                  </button>
-                )}
-                {/* Change */}
-                <button
-                  onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); setAvatarOverlayOpen(false) }}
-                  className="flex items-center gap-1 text-[11px] font-semibold text-white px-2.5 py-1 rounded-full bg-white/20 active:bg-white/40 transition-all backdrop-blur-sm"
-                >
-                  <Camera className="size-3" /> Change
-                </button>
-                {/* Reposition */}
-                {profile?.avatar_url && (
-                  <button
-                    onClick={e => { e.stopPropagation(); handleEditAvatarPosition(); setAvatarOverlayOpen(false) }}
-                    className="flex items-center gap-1 text-[11px] font-semibold text-white px-2.5 py-1 rounded-full bg-white/20 active:bg-white/40 transition-all backdrop-blur-sm"
-                  >
-                    <Move className="size-3" /> Reposition
-                  </button>
-                )}
               </div>
             )}
+
+            {/* Popover trigger — camera icon on hover, always tappable */}
+            {!editingAvatar && (
+              <button
+                ref={avatarAnchorRef}
+                onClick={() => setAvatarPopoverOpen(v => !v)}
+                className="absolute inset-0 rounded-xl bg-black/0 hover:bg-black/40 active:bg-black/50 transition-all duration-150 flex items-center justify-center group/av"
+                aria-label="Profile photo options"
+              >
+                <Camera className="size-5 text-white opacity-0 group-hover/av:opacity-100 transition-opacity drop-shadow" />
+              </button>
+            )}
+
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarFileSelect} />
           </div>
 
@@ -548,7 +742,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Spacer when avatar save buttons are showing */}
         {editingAvatar && <div className="h-6" />}
 
         {/* Username, bio, joined */}
@@ -701,7 +894,7 @@ export default function ProfilePage() {
                             likes={post.reactions[0]?.count ?? 0}
                             comments={post.comments[0]?.count ?? 0}
                             username={post.profiles?.username ?? profile?.username}
-                            avatar={post.profiles?.avatar_url ?? profile?.avatar_url}
+                            avatar={avatarSrc ?? post.profiles?.avatar_url ?? ""}
                             imageUrls={post.image_urls ?? []}
                           />
                         </Link>
