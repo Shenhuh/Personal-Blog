@@ -69,12 +69,7 @@ function DraggableImage({ src, position, onChange, className, editing }: Draggab
         onDragStart={e => e.preventDefault()}
       />
       {editing && (
-        <div className="absolute inset-0 pointer-events-none border-2 border-primary/60 ring-2 ring-primary/20">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-1.5 bg-black/60 text-white text-xs font-medium px-3 py-1.5 rounded-full backdrop-blur-sm">
-            <Move className="size-3.5" />
-            Drag to reposition
-          </div>
-        </div>
+        <div className="absolute inset-0 pointer-events-none border-2 border-primary/60 ring-2 ring-primary/20" />
       )}
     </div>
   )
@@ -106,22 +101,26 @@ function PopoverMenu({
   onRepositionSave, onRepositionCancel, uploading,
 }: PopoverMenuProps) {
   const popoverRef = useRef<HTMLDivElement>(null)
-  const [style, setStyle] = useState<React.CSSProperties>({})
+  const [style, setStyle] = useState<React.CSSProperties>({ position: "fixed", top: -9999, left: -9999, zIndex: 50, visibility: "hidden" })
 
-  // Position popover below anchor — re-runs on scroll/resize so it always tracks
+  // Always keep position updated — render hidden off-screen until coords are ready
   useEffect(() => {
-    if (!open) return
     const update = () => {
       if (!anchorRef.current) return
       const anchor = (anchorRef.current as HTMLElement).getBoundingClientRect()
       const popW = repositionMode ? 288 : 192
       let left = anchor.left + anchor.width / 2 - popW / 2
       left = Math.max(8, Math.min(left, window.innerWidth - popW - 8))
-      setStyle({ position: "fixed", top: anchor.bottom + 8, left, width: popW, zIndex: 50 })
+      setStyle({ position: "fixed", top: anchor.bottom + 8, left, width: popW, zIndex: 50, visibility: "visible" })
     }
-    update()
-    window.addEventListener("scroll", update, true)
-    window.addEventListener("resize", update)
+    if (open) {
+      // Use rAF so the DOM has painted and getBoundingClientRect is accurate
+      requestAnimationFrame(() => { requestAnimationFrame(update) })
+      window.addEventListener("scroll", update, true)
+      window.addEventListener("resize", update)
+    } else {
+      setStyle({ position: "fixed", top: -9999, left: -9999, zIndex: 50, visibility: "hidden" })
+    }
     return () => {
       window.removeEventListener("scroll", update, true)
       window.removeEventListener("resize", update)
@@ -141,41 +140,51 @@ function PopoverMenu({
     return () => document.removeEventListener("mousedown", handler)
   }, [open, onClose, anchorRef])
 
-  if (!open) return null
+  if (!open && style.visibility === "hidden") return null
 
-  // Reposition mode: show draggable image preview + save/cancel inside popover
+  // Reposition mode: fullscreen bottom sheet so the entire screen is the drag area
   if (repositionMode && repositionSrc && repositionPos && onRepositionChange) {
     return (
-      <div ref={popoverRef} style={style} className="bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
-          <span className="text-xs font-semibold text-foreground">Drag to reposition</span>
-          <button onClick={onRepositionCancel} className="text-muted-foreground hover:text-foreground p-0.5">
-            <X className="size-3.5" />
+      <div className="fixed inset-0 z-50 flex flex-col bg-black/90">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 bg-card/95 backdrop-blur border-b border-border shrink-0">
+          <span className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Move className="size-4 text-muted-foreground" /> Drag to reposition
+          </span>
+          <button onClick={onRepositionCancel} className="p-1.5 rounded-full hover:bg-muted text-muted-foreground">
+            <X className="size-4" />
           </button>
         </div>
-        <DraggableImage
-          src={repositionSrc}
-          position={repositionPos}
-          onChange={onRepositionChange}
-          editing={true}
-          className="w-full h-40"
-        />
-        <div className="flex gap-2 p-2.5">
+        {/* Full-screen drag area */}
+        <div className="flex-1 relative overflow-hidden">
+          <DraggableImage
+            src={repositionSrc}
+            position={repositionPos}
+            onChange={onRepositionChange}
+            editing={true}
+            className="w-full h-full"
+          />
+          <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/60 text-xs bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-sm pointer-events-none">
+            Drag anywhere to adjust position
+          </p>
+        </div>
+        {/* Footer actions */}
+        <div className="flex gap-3 p-4 bg-card/95 backdrop-blur border-t border-border shrink-0">
           <button
             onClick={onRepositionCancel}
-            className="flex-1 py-2 rounded-lg bg-muted hover:bg-muted/80 text-xs font-medium text-muted-foreground transition-colors"
+            className="flex-1 py-3 rounded-xl bg-muted hover:bg-muted/80 text-sm font-medium text-muted-foreground transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={onRepositionSave}
             disabled={uploading}
-            className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-medium transition-colors disabled:opacity-70 flex items-center justify-center gap-1"
+            className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-medium transition-colors disabled:opacity-70 flex items-center justify-center gap-2"
           >
             {uploading
-              ? <span className="size-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              : <Check className="size-3" />}
-            {uploading ? "Saving..." : "Save"}
+              ? <span className="size-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : <Check className="size-4" />}
+            {uploading ? "Saving..." : "Save position"}
           </button>
         </div>
       </div>
@@ -246,8 +255,9 @@ export default function ProfilePage() {
   const [coverRepositionInPopover, setCoverRepositionInPopover] = useState(false)
 
   // Anchor refs for popover
-  const avatarAnchorRef = useRef<HTMLButtonElement>(null)
+  const avatarAnchorRef = useRef<HTMLElement | null>(null)
   const coverAnchorRef = useRef<HTMLElement | null>(null)
+  const coverButtonRef = useRef<HTMLButtonElement>(null) // desktop "Edit cover" button anchor
 
   // Lightbox
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
@@ -261,6 +271,13 @@ export default function ProfilePage() {
   // Temp pos for inside-popover reposition (committed on Save)
   const [tempAvatarPos, setTempAvatarPos] = useState({ x: 50, y: 50 })
   const [tempCoverPos, setTempCoverPos] = useState({ x: 50, y: 50 })
+
+  // Drag hint toast — shown briefly when entering desktop reposition mode
+  const [dragHint, setDragHint] = useState(false)
+  const showDragHint = () => {
+    setDragHint(true)
+    setTimeout(() => setDragHint(false), 2500)
+  }
 
   // Pending uploads
   const [pendingCoverSrc, setPendingCoverSrc] = useState<string | null>(null)
@@ -364,6 +381,7 @@ export default function ProfilePage() {
       setCoverPopoverOpen(true)
     } else {
       setEditingCover(true)
+      showDragHint()
     }
     e.target.value = ""
   }
@@ -376,6 +394,7 @@ export default function ProfilePage() {
     } else {
       setCoverPopoverOpen(false)
       setEditingCover(true)
+      showDragHint()
     }
   }
 
@@ -432,6 +451,7 @@ export default function ProfilePage() {
       setAvatarPopoverOpen(true)
     } else {
       setEditingAvatar(true)
+      showDragHint()
     }
     e.target.value = ""
   }
@@ -444,6 +464,7 @@ export default function ProfilePage() {
     } else {
       setAvatarPopoverOpen(false)
       setEditingAvatar(true)
+      showDragHint()
     }
   }
 
@@ -466,10 +487,9 @@ export default function ProfilePage() {
         setProfile((prev: any) => ({ ...prev, avatar_url: freshUrl, avatar_position: finalPos }))
         setAvatarPos(finalPos)
         // Notify other components (header, post cards) that avatar changed
-        // Broadcast to all components via both custom event and localStorage
-        localStorage.setItem("live_avatar_url", freshUrl)
-        window.dispatchEvent(new CustomEvent("avatar-updated", { detail: { avatar_url: freshUrl } }))
-        window.dispatchEvent(new StorageEvent("storage", { key: "live_avatar_url", newValue: freshUrl }))
+        // Broadcast to all components via custom event and user-scoped localStorage key
+        localStorage.setItem(`live_avatar_url_${user.id}`, freshUrl)
+        window.dispatchEvent(new CustomEvent("avatar-updated", { detail: { avatar_url: freshUrl, userId: user.id } }))
       }
       setPendingAvatarBlob(null)
       setPendingAvatarSrc(null)
@@ -545,6 +565,14 @@ export default function ProfilePage() {
   return (
     <div className="w-full min-h-screen bg-background">
 
+      {/* ── DRAG HINT TOAST ── */}
+      {dragHint && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2.5 bg-foreground text-background text-xs font-medium px-4 py-2.5 rounded-full shadow-xl pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <Move className="size-3.5" />
+          Drag the image to reposition it
+        </div>
+      )}
+
       {/* ── LIGHTBOX ── */}
       {lightboxSrc && (
         <div
@@ -569,7 +597,7 @@ export default function ProfilePage() {
       <PopoverMenu
         open={avatarPopoverOpen}
         onClose={handleCancelAvatar}
-        anchorRef={avatarAnchorRef as React.RefObject<HTMLElement | null>}
+        anchorRef={avatarAnchorRef}
         hasImage={!!profile?.avatar_url}
         onView={profile?.avatar_url ? () => { setLightboxSrc(profile.avatar_url); setAvatarPopoverOpen(false) } : undefined}
         onChange={() => fileInputRef.current?.click()}
@@ -587,7 +615,7 @@ export default function ProfilePage() {
       <PopoverMenu
         open={coverPopoverOpen}
         onClose={handleCancelCover}
-        anchorRef={coverAnchorRef}
+        anchorRef={coverButtonRef.current ? coverButtonRef : coverAnchorRef}
         hasImage={!!profile?.cover_url}
         onView={profile?.cover_url ? () => { setLightboxSrc(profile.cover_url); setCoverPopoverOpen(false) } : undefined}
         onChange={() => coverInputRef.current?.click()}
@@ -644,7 +672,7 @@ export default function ProfilePage() {
             </>
           ) : (
             <button
-              ref={coverAnchorRef as React.RefObject<HTMLButtonElement>}
+              ref={coverButtonRef}
               onClick={() => setCoverPopoverOpen(v => !v)}
               className="flex items-center gap-1.5 text-xs font-medium px-3.5 py-2 rounded-full bg-background/90 hover:bg-background text-foreground border border-border shadow-md transition-all"
             >
@@ -654,8 +682,8 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* Invisible anchor point for cover popover positioning on mobile */}
-        <span ref={coverAnchorRef as React.RefObject<HTMLSpanElement>} className="absolute bottom-0 left-1/2 -translate-x-1/2 pointer-events-none" />
+        {/* Invisible anchor for mobile — centered at bottom of banner */}
+        <span ref={coverAnchorRef as React.RefObject<HTMLSpanElement>} className="absolute bottom-0 right-4 pointer-events-none sm:hidden" />
 
         {/* Mobile tap zone */}
         {!editingCover && (
@@ -714,14 +742,17 @@ export default function ProfilePage() {
 
             {/* Popover trigger — camera icon on hover, always tappable */}
             {!editingAvatar && (
-              <button
-                ref={avatarAnchorRef}
-                onClick={() => setAvatarPopoverOpen(v => !v)}
-                className="absolute inset-0 rounded-xl bg-black/0 hover:bg-black/40 active:bg-black/50 transition-all duration-150 flex items-center justify-center group/av"
-                aria-label="Profile photo options"
-              >
-                <Camera className="size-5 text-white opacity-0 group-hover/av:opacity-100 transition-opacity drop-shadow" />
-              </button>
+              <>
+                <button
+                  onClick={() => setAvatarPopoverOpen(v => !v)}
+                  className="absolute inset-0 rounded-xl bg-black/0 hover:bg-black/40 active:bg-black/50 transition-all duration-150 flex items-center justify-center group/av"
+                  aria-label="Profile photo options"
+                >
+                  <Camera className="size-5 text-white opacity-0 group-hover/av:opacity-100 transition-opacity drop-shadow" />
+                </button>
+                {/* Anchor for popover — sits at bottom-right of avatar so popup aligns nicely */}
+                <span ref={avatarAnchorRef} className="absolute bottom-0 right-0 pointer-events-none" />
+              </>
             )}
 
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarFileSelect} />
@@ -750,7 +781,7 @@ export default function ProfilePage() {
             @{profile?.username}
           </h1>
           {profile?.bio
-            ? <p className="text-sm text-muted-foreground mt-1.5 max-w-lg leading-relaxed">{profile.bio}</p>
+            ? <p className="text-sm text-muted-foreground mt-1.5 max-w-lg leading-relaxed whitespace-pre-wrap">{profile.bio}</p>
             : <p className="text-sm text-muted-foreground/40 mt-1.5 italic">No bio yet</p>}
           {profile?.created_at && (
             <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { Search, Bell, Heart, MessageCircle, Users, Menu } from "lucide-react"
 import { timeAgo } from "@/lib/timeAgo"
 import { SidebarTrigger } from "@/components/ui/sidebar"
@@ -10,9 +10,11 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 export default function FeedHeader() {
   const supabase = createClient()
   const router = useRouter()
+  const pathname = usePathname()
   const [username, setUsername] = useState("")
   const [avatar, setAvatar] = useState("")
   const [userId, setUserId] = useState<string | null>(null)
+  const userIdRef = useRef<string | null>(null)
   const [notifications, setNotifications] = useState<any[]>([])
   const [showPopup, setShowPopup] = useState(false)
   const popupRef = useRef<HTMLDivElement>(null)
@@ -59,12 +61,29 @@ export default function FeedHeader() {
   }
 
   const handleNotificationClick = (n: any) => {
-    if (n.type === "follow") router.push(`/feed/user/${n.actor_id}`)
-    else if (n.post_id) router.push(`/feed/${n.post_id}`)
     setShowPopup(false)
+    if (n.type === "follow") {
+      router.push(`/feed/user/${n.actor_id}`)
+      return
+    }
+
+    if (n.post_id) {
+      const targetPath = `/feed/${n.post_id}`
+      const hash = (n.type === "comment" || n.type === "comment_watch") && n.comment_id 
+        ? `#comment-${n.comment_id}` 
+        : ""
+      
+      const fullUrl = `${targetPath}${hash}`
+
+      // If already on the page, the hash might not trigger a scroll via router.push
+      if (pathname === targetPath && hash) {
+        window.location.hash = hash // Manually update hash to trigger hashchange listener
+      } else {
+        router.push(fullUrl)
+      }
+    }
   }
 
-  // Close notification popup on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (popupRef.current && !popupRef.current.contains(e.target as Node))
@@ -74,14 +93,14 @@ export default function FeedHeader() {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
-  // Listen for avatar changes from the profile page
   useEffect(() => {
     const onAvatarUpdated = (e: Event) => {
-      const url = (e as CustomEvent<{ avatar_url: string }>).detail?.avatar_url
-      if (url) setAvatar(url)
+      const detail = (e as CustomEvent<{ avatar_url: string; userId: string }>).detail
+      if (detail?.avatar_url && (!detail.userId || detail.userId === userIdRef.current)) setAvatar(detail.avatar_url)
     }
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "live_avatar_url" && e.newValue) setAvatar(e.newValue)
+      const uid = userIdRef.current
+      if (uid && e.key === `live_avatar_url_${uid}` && e.newValue) setAvatar(e.newValue)
     }
     window.addEventListener("avatar-updated", onAvatarUpdated)
     window.addEventListener("storage", onStorage)
@@ -91,14 +110,13 @@ export default function FeedHeader() {
     }
   }, [])
 
-  // Load profile on mount — prefer localStorage cached avatar for instant display
   useEffect(() => {
     let channel: any = null
-
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       setUserId(user.id)
+      userIdRef.current = user.id
 
       const { data: profileData } = await supabase
         .from("profiles")
@@ -108,8 +126,7 @@ export default function FeedHeader() {
 
       if (profileData) {
         setUsername(profileData.username)
-        // Prefer live_avatar_url from localStorage if it exists (means user updated recently)
-        const cached = localStorage.getItem("live_avatar_url")
+        const cached = localStorage.getItem(`live_avatar_url_${user.id}`)
         setAvatar(cached || profileData.avatar_url || "")
       }
 
@@ -133,15 +150,12 @@ export default function FeedHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur px-4 md:px-6 py-3">
       <div className="max-w-4xl mx-auto flex items-center gap-2 md:gap-4">
-
-        {/* MOBILE SIDEBAR TRIGGER */}
         <div className="md:hidden flex items-center">
           <SidebarTrigger>
             <Menu className="size-5 text-muted-foreground" />
           </SidebarTrigger>
         </div>
 
-        {/* SEARCH BAR */}
         <div className="flex items-center gap-2 border border-border rounded-full px-4 py-2 flex-1 max-w-xl bg-background">
           <Search className="size-4 text-muted-foreground shrink-0" />
           <input
@@ -151,8 +165,6 @@ export default function FeedHeader() {
         </div>
 
         <div className="flex items-center gap-2 md:gap-3 ml-auto">
-
-          {/* NOTIFICATIONS */}
           <div className="relative" ref={popupRef}>
             <button
               onClick={handleBellClick}
@@ -220,7 +232,6 @@ export default function FeedHeader() {
                     ))
                   )}
                 </div>
-
                 <div className="border-t border-border px-4 py-2.5">
                   <button
                     onClick={() => { router.push("/feed/notifications"); setShowPopup(false) }}
@@ -233,7 +244,6 @@ export default function FeedHeader() {
             )}
           </div>
 
-          {/* USER AVATAR */}
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
               <p className="text-xs text-muted-foreground">Logged in as</p>

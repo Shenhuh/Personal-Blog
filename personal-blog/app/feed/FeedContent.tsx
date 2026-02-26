@@ -37,8 +37,12 @@ export default function FeedContent() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [liveAvatar, setLiveAvatar] = useState<string | null>(null)
 
+  const [mounted, setMounted] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+
+  // Prevent SSR hydration mismatch from localStorage reads
+  useEffect(() => { setMounted(true) }, [])
 
   // Get current user + seed liveAvatar from localStorage or DB
   useEffect(() => {
@@ -47,7 +51,7 @@ export default function FeedContent() {
       if (!user) return
       setCurrentUserId(user.id)
       // Use cached live URL if available
-      const cached = localStorage.getItem("live_avatar_url")
+      const cached = localStorage.getItem(`live_avatar_url_${user.id}`)
       if (cached) { setLiveAvatar(cached); return }
       const { data } = await supabase.from("profiles").select("avatar_url").eq("id", user.id).single()
       if (data?.avatar_url) setLiveAvatar(data.avatar_url)
@@ -58,11 +62,11 @@ export default function FeedContent() {
   // Listen for avatar changes from profile page
   useEffect(() => {
     const onAvatarUpdated = (e: Event) => {
-      const url = (e as CustomEvent<{ avatar_url: string }>).detail?.avatar_url
-      if (url) setLiveAvatar(url)
+      const detail = (e as CustomEvent<{ avatar_url: string; userId: string }>).detail
+      if (detail?.avatar_url && (!detail.userId || detail.userId === currentUserId)) setLiveAvatar(detail.avatar_url)
     }
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "live_avatar_url" && e.newValue) setLiveAvatar(e.newValue)
+      if (currentUserId && e.key === `live_avatar_url_${currentUserId}` && e.newValue) setLiveAvatar(e.newValue)
     }
     window.addEventListener("avatar-updated", onAvatarUpdated)
     window.addEventListener("storage", onStorage)
@@ -241,10 +245,12 @@ export default function FeedContent() {
             <button key={f} onClick={() => router.push(`/feed?flair=${f}&sort=${currentSort}`)} className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium border transition-all ${currentFlair === f ? "bg-primary text-white" : "bg-card"}`}>{f}</button>
           ))}
         </div>
-        <Select value={currentSort} onValueChange={(v) => router.push(`/feed?flair=${currentFlair}&sort=${v}`)}>
-          <SelectTrigger className="w-[130px] rounded-full h-8 text-xs px-4"><SelectValue /></SelectTrigger>
-          <SelectContent>{sortOptions.map(s => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}</SelectContent>
-        </Select>
+        {mounted && (
+          <Select value={currentSort} onValueChange={(v) => router.push(`/feed?flair=${currentFlair}&sort=${v}`)}>
+            <SelectTrigger className="w-[130px] rounded-full h-8 text-xs px-4"><SelectValue /></SelectTrigger>
+            <SelectContent>{sortOptions.map(s => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}</SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* Post Grid */}
