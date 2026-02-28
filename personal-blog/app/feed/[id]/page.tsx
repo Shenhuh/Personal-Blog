@@ -5,10 +5,10 @@ import { createClient } from "@/lib/supabase/client"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Heart, MessageCircle, Clock, ArrowLeft, Eye, Lock, VolumeX, ShieldOff, User, Bookmark, Bell, ImagePlus, X as XIcon, ChevronLeft, ChevronRight } from "lucide-react"
+import { Heart, MessageCircle, Clock, ArrowLeft, Eye, Lock, VolumeX, ShieldOff, User, Bookmark, Bell, ImagePlus, X as XIcon, ChevronLeft, ChevronRight, CornerDownRight, ChevronDown, ChevronUp } from "lucide-react"
 import { timeAgo } from "@/lib/timeAgo"
 
-// --- Lightbox Component ---
+// Lightbox
 function Lightbox({ images, startIndex, onClose }: { images: string[], startIndex: number, onClose: () => void }) {
   const [current, setCurrent] = useState(startIndex)
 
@@ -38,11 +38,17 @@ function Lightbox({ images, startIndex, onClose }: { images: string[], startInde
         </>
       )}
       <img src={images[current]} onClick={e => e.stopPropagation()} className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl" />
+      {images.length > 1 && (
+        <div className="absolute bottom-4 flex gap-2">
+          {images.map((_, i) => (
+            <button key={i} onClick={e => { e.stopPropagation(); setCurrent(i) }} className={`size-2 rounded-full transition-colors ${i === current ? "bg-white" : "bg-white/40"}`} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
-// --- ImageGrid Component ---
 function ImageGrid({ images, onView }: { images: string[], onView: (index: number) => void }) {
   if (!images || images.length === 0) return null
   const count = images.length
@@ -90,7 +96,6 @@ function ImageGrid({ images, onView }: { images: string[], onView: (index: numbe
   )
 }
 
-// --- ProfileHoverCard Component ---
 function ProfileHoverCard({ profile, currentUserId, onClose }: { profile: any, currentUserId: string, onClose: () => void }) {
   const supabase = createClient()
   const router = useRouter()
@@ -166,7 +171,172 @@ function ProfileHoverCard({ profile, currentUserId, onClose }: { profile: any, c
   )
 }
 
-// --- Main PostPage Component ---
+
+// ── REPLY SECTION ─────────────────────────────────────────────────────────────
+function ReplySection({
+  postId, commentId, currentUser, currentProfile, postLocked, highlightedCommentId, onHighlight, openLightbox
+}: {
+  postId: string
+  commentId: string
+  currentUser: any
+  currentProfile: any
+  postLocked: boolean
+  highlightedCommentId: string | null
+  onHighlight: (id: string) => void
+  openLightbox: (images: string[], index: number) => void
+}) {
+  const supabase = createClient()
+  const [replies, setReplies] = useState<any[]>([])
+  const [expanded, setExpanded] = useState(false)
+  const [showReplyBox, setShowReplyBox] = useState(false)
+  const [replyContent, setReplyContent] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [activeHover, setActiveHover] = useState<string | null>(null)
+  const router = useRouter()
+
+  const fetchReplies = async () => {
+    const { data } = await supabase
+      .from("comments")
+      .select("*, profiles(id, username, avatar_url)")
+      .eq("parent_id", commentId)
+      .order("created_at", { ascending: true })
+    if (data) setReplies(data)
+  }
+
+  useEffect(() => { fetchReplies() }, [commentId])
+
+  // Auto-expand if a reply is highlighted
+  useEffect(() => {
+    if (highlightedCommentId && replies.some(r => r.id === highlightedCommentId)) {
+      setExpanded(true)
+    }
+  }, [highlightedCommentId, replies])
+
+  const handleSubmitReply = async () => {
+    if (!currentUser || !replyContent.trim()) return
+    setSubmitting(true)
+    const { data, error } = await supabase.from("comments").insert({
+      post_id: postId,
+      user_id: currentUser.id,
+      content: replyContent.trim(),
+      parent_id: commentId,
+      image_urls: [],
+    }).select("id").single()
+
+    if (error) {
+      console.error("Reply insert error:", error)
+      alert(`Failed to save reply: ${error.message}`)
+      setSubmitting(false)
+      return
+    }
+
+    setReplyContent("")
+    setShowReplyBox(false)
+    setExpanded(true)
+    await fetchReplies()
+    setSubmitting(false)
+  }
+
+  return (
+    <div className="mt-3">
+      {/* Reply + toggle bar */}
+      <div className="flex items-center gap-3">
+        {!postLocked && currentUser && (
+          <button
+            onClick={() => { setShowReplyBox(v => !v) }}
+            className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-primary transition-colors"
+          >
+            <CornerDownRight className="size-3" />
+            Reply
+          </button>
+        )}
+        {replies.length > 0 && (
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/70 transition-colors"
+          >
+            {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+            {expanded ? "Hide" : `${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
+          </button>
+        )}
+      </div>
+
+      {/* Inline reply box */}
+      {showReplyBox && (
+        <div className="mt-3 pl-4 border-l-2 border-primary/30">
+          <div className="flex items-center gap-2 mb-2">
+            {currentProfile?.avatar_url
+              ? <img src={currentProfile.avatar_url} className="size-5 rounded-full object-cover" />
+              : <div className="size-5 rounded-full bg-muted" />}
+            <span className="text-xs font-medium text-foreground">@{currentProfile?.username}</span>
+          </div>
+          <textarea
+            value={replyContent}
+            onChange={e => setReplyContent(e.target.value)}
+            placeholder="Write a reply..."
+            autoFocus
+            className="w-full border border-border rounded-xl p-2.5 h-20 resize-none bg-background text-xs outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+          />
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={handleSubmitReply}
+              disabled={submitting || !replyContent.trim()}
+              className="px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium disabled:opacity-50 transition-colors"
+            >
+              {submitting ? "Replying..." : "Reply"}
+            </button>
+            <button
+              onClick={() => { setShowReplyBox(false); setReplyContent("") }}
+              className="px-3 py-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium hover:bg-muted/80 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Replies list */}
+      {expanded && replies.length > 0 && (
+        <div className="mt-3 space-y-3 pl-4 border-l-2 border-border">
+          {replies.map(reply => (
+            <div
+              key={reply.id}
+              id={`comment-${reply.id}`}
+              className={`rounded-xl p-3 transition-all duration-700 ${
+                highlightedCommentId === reply.id
+                  ? "bg-primary/10 ring-2 ring-primary/40"
+                  : "bg-muted/40"
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <div className="relative">
+                  <button
+                    onClick={() => setActiveHover(activeHover === reply.id ? null : reply.id)}
+                    className="flex items-center gap-1.5"
+                  >
+                    {reply.profiles?.avatar_url
+                      ? <img src={reply.profiles.avatar_url} className="size-5 rounded-full object-cover hover:ring-2 ring-primary transition-all" />
+                      : <div className="size-5 rounded-full bg-muted hover:ring-2 ring-primary transition-all" />}
+                    <span className="text-xs font-medium text-foreground hover:underline">@{reply.profiles?.username ?? "Anonymous"}</span>
+                  </button>
+                  {activeHover === reply.id && currentUser && reply.profiles && (
+                    <ProfileHoverCard profile={reply.profiles} currentUserId={currentUser.id} onClose={() => setActiveHover(null)} />
+                  )}
+                </div>
+                <span className="text-[10px] text-muted-foreground ml-auto">{timeAgo(reply.created_at)}</span>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">{reply.content}</p>
+              {reply.image_urls?.length > 0 && (
+                <ImageGrid images={reply.image_urls} onView={(i) => openLightbox(reply.image_urls, i)} />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function PostPage() {
   const supabase = createClient()
   const { id } = useParams()
@@ -212,6 +382,7 @@ export default function PostPage() {
       .from("comments")
       .select("*, profiles(id, username, avatar_url)")
       .eq("post_id", id)
+      .is("parent_id", null)
       .order("created_at", { ascending: true })
     if (data) setComments(data)
   }
@@ -242,37 +413,39 @@ export default function PostPage() {
     fetchSavedAndWatch()
   }, [])
 
-  // FIXED AUTO-SCROLL & HIGHLIGHT LOGIC
-  useEffect(() => {
-    if (comments.length === 0) return
-
-    const scrollAndHighlight = () => {
-      const hash = window.location.hash
-      if (hash.startsWith("#comment-")) {
-        const commentId = hash.replace("#comment-", "")
-        setHighlightedCommentId(commentId)
-
-        // Give the DOM a tiny frame to ensure list items are rendered
-        requestAnimationFrame(() => {
-          const el = document.getElementById(`comment-${commentId}`)
-          if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "center" })
-          }
-        })
-
-        // Fade out the highlight after 4 seconds
-        const timer = setTimeout(() => setHighlightedCommentId(null), 4000)
-        return () => clearTimeout(timer)
+  // Scroll to & highlight a comment — retries until element is in DOM
+  const scrollToComment = (commentId: string) => {
+    setHighlightedCommentId(commentId)
+    let attempts = 0
+    const tryScroll = () => {
+      const el = document.getElementById(`comment-${commentId}`)
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" })
+      } else if (attempts < 15) {
+        attempts++
+        setTimeout(tryScroll, 100)
       }
     }
+    tryScroll()
+    setTimeout(() => setHighlightedCommentId(null), 3500)
+  }
 
-    // Run on initial comment load
-    scrollAndHighlight()
-
-    // Listen for hash changes (case where user is already on page and clicks a new comment notification)
-    window.addEventListener("hashchange", scrollAndHighlight)
-    return () => window.removeEventListener("hashchange", scrollAndHighlight)
+  // Trigger on comments load (covers navigating from another page)
+  useEffect(() => {
+    if (comments.length === 0) return
+    const hash = window.location.hash
+    if (hash.startsWith("#comment-")) scrollToComment(hash.replace("#comment-", ""))
   }, [comments])
+
+  // Also trigger on hashchange (covers clicking notification while already on this post page)
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash
+      if (hash.startsWith("#comment-")) scrollToComment(hash.replace("#comment-", ""))
+    }
+    window.addEventListener("hashchange", onHashChange)
+    return () => window.removeEventListener("hashchange", onHashChange)
+  }, [])
 
   useEffect(() => {
     const channel = supabase.channel(`post-${id}`)
@@ -316,7 +489,12 @@ export default function PostPage() {
         image_urls.push(urlData.publicUrl)
       }
     }
-    await supabase.from("comments").insert({ post_id: id, user_id: user.id, content, image_urls })
+
+    // Trigger handles notifications — just insert the comment
+    await supabase
+      .from("comments")
+      .insert({ post_id: id, user_id: user.id, content, image_urls })
+
     setContent("")
     setCommentImages([])
     setCommentImagePreviews([])
@@ -405,7 +583,7 @@ export default function PostPage() {
               <Heart className={`size-3.5 ${hasReacted ? "fill-red-500" : ""}`} /> {reactions}
             </button>
             <button className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <MessageCircle className="size-3.5" /> {comments.length}
+              <MessageCircle className="size-3.5" /> {comments.filter((c: any) => !c.parent_id).length}
             </button>
             <button onClick={handleSave} className={`flex items-center gap-1.5 text-xs transition-colors ml-auto ${isSaved ? "text-primary" : "text-muted-foreground hover:text-primary"}`}>
               <Bookmark className={`size-3.5 ${isSaved ? "fill-primary" : ""}`} /> {isSaved ? "Saved" : "Save"}
@@ -433,16 +611,17 @@ export default function PostPage() {
           <p className="text-xs text-muted-foreground mt-1">Be the first to share your thoughts</p>
         </div>
       ) : (
+        // ── Removed fixed height container so page can scroll to any comment ──
         <div className="space-y-4">
           {comments.map(comment => (
             <article
               key={comment.id}
               id={`comment-${comment.id}`}
-              className={`rounded-2xl border transition-all duration-1000 ${
+              className={`rounded-2xl border bg-card p-4 md:p-6 transition-all duration-700 ${
                 highlightedCommentId === comment.id
-                  ? "border-primary ring-2 ring-primary/40 bg-primary/10 scale-[1.01]"
-                  : "border-border bg-card"
-              } p-4 md:p-6`}
+                  ? "border-primary ring-2 ring-primary/40 bg-primary/5"
+                  : "border-border"
+              }`}
             >
               <div className="flex items-center gap-2 mb-3">
                 <div className="relative">
@@ -456,19 +635,30 @@ export default function PostPage() {
                     <ProfileHoverCard profile={comment.profiles} currentUserId={currentUser.id} onClose={() => setActiveHover(null)} />
                   )}
                 </div>
-                {highlightedCommentId === comment.id && (
-                  <Badge className="ml-2 h-4 text-[9px] px-1.5 bg-primary text-primary-foreground animate-pulse">Linked</Badge>
-                )}
                 <span className="text-xs text-muted-foreground ml-auto">{timeAgo(comment.created_at)}</span>
               </div>
               <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">{comment.content}</p>
               <ImageGrid images={comment.image_urls ?? []} onView={(i) => openLightbox(comment.image_urls ?? [], i)} />
+              <ReplySection
+                postId={id as string}
+                commentId={comment.id}
+                currentUser={currentUser}
+                currentProfile={currentProfile}
+                postLocked={post?.locked ?? false}
+                highlightedCommentId={highlightedCommentId}
+                onHighlight={(id) => scrollToComment(id)}
+                openLightbox={openLightbox}
+              />
             </article>
           ))}
         </div>
       )}
 
-      {!post?.locked && (
+      {post?.locked ? (
+        <div className="flex items-center gap-2 text-sm text-orange-500 bg-orange-500/10 rounded-2xl px-6 py-4">
+          <Lock className="size-4 shrink-0" /> The author has locked comments on this post
+        </div>
+      ) : (
         <article className="rounded-2xl border border-border bg-card p-4 md:p-6">
           <div className="flex items-center gap-2 mb-4">
             {currentProfile?.avatar_url
@@ -480,7 +670,7 @@ export default function PostPage() {
             value={content}
             onChange={e => setContent(e.target.value)}
             placeholder="Share your thoughts..."
-            className="w-full border rounded-xl p-3 mb-3 h-24 resize-none bg-background text-sm focus:outline-none focus:ring-1 ring-primary"
+            className="w-full border rounded-xl p-3 mb-3 h-24 resize-none bg-background text-sm"
           />
           {commentImagePreviews.length > 0 && (
             <div className="flex gap-2 flex-wrap mb-3">
