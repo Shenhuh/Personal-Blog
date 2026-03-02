@@ -3,23 +3,10 @@
 import { usePathname, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
+  Sidebar, SidebarContent, SidebarFooter, SidebarHeader,
+  SidebarMenu, SidebarMenuItem, SidebarMenuButton,
 } from "@/components/ui/sidebar"
-import {
-  Home,
-  Bookmark,
-  Users,
-  Compass,
-  User,
-  LogOut,
-  Flame,
-} from "lucide-react"
+import { Home, Bookmark, Users, Compass, User, LogOut, Flame, Hash } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 
@@ -38,8 +25,9 @@ export function AppSidebar() {
 
   const [trending, setTrending] = useState<any[]>([])
   const [loadingTrending, setLoadingTrending] = useState(true)
+  const [trendingTags, setTrendingTags] = useState<{ tag: string, count: number }[]>([])
+  const [loadingTags, setLoadingTags] = useState(true)
 
-  // Better active state (works for nested routes)
   const isActive = (href: string) => {
     if (href === "/feed") return pathname === "/feed"
     return pathname.startsWith(href)
@@ -47,35 +35,48 @@ export function AppSidebar() {
 
   const fetchTrending = async () => {
     setLoadingTrending(true)
-
     const { data, error } = await supabase
       .from("posts")
-      .select(`
-        id,
-        title,
-        flair,
-        reactions(count)
-      `)
+      .select("id, title, flair, reactions(count)")
       .order("created_at", { ascending: false })
       .limit(20)
-
     if (!error && data) {
       const sorted = [...data]
-        .sort(
-          (a, b) =>
-            (b.reactions?.[0]?.count ?? 0) -
-            (a.reactions?.[0]?.count ?? 0)
-        )
+        .sort((a, b) => (b.reactions?.[0]?.count ?? 0) - (a.reactions?.[0]?.count ?? 0))
         .slice(0, 5)
-
       setTrending(sorted)
     }
-
     setLoadingTrending(false)
+  }
+
+  const fetchTrendingTags = async () => {
+    setLoadingTags(true)
+    const { data } = await supabase
+      .from("posts")
+      .select("content")
+      .not("content", "is", null)
+      .limit(200)
+    if (data) {
+      const counts: Record<string, number> = {}
+      for (const post of data) {
+        const matches = post.content?.match(/#[a-zA-Z0-9_]+/g) ?? []
+        for (const tag of matches) {
+          const normalized = tag.toLowerCase()
+          counts[normalized] = (counts[normalized] ?? 0) + 1
+        }
+      }
+      const sorted = Object.entries(counts)
+        .map(([tag, count]) => ({ tag, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5)
+      setTrendingTags(sorted)
+    }
+    setLoadingTags(false)
   }
 
   useEffect(() => {
     fetchTrending()
+    fetchTrendingTags()
   }, [])
 
   const handleLogout = async () => {
@@ -85,16 +86,10 @@ export function AppSidebar() {
 
   return (
     <Sidebar className="border-r">
-      {/* HEADER */}
       <SidebarHeader className="px-4 py-5">
-        <Link
-          href="/feed"
-          className="flex items-center gap-3 group"
-        >
+        <Link href="/feed" className="flex items-center gap-3 group">
           <div className="size-9 rounded-2xl bg-primary flex items-center justify-center shadow-md">
-            <span className="text-primary-foreground font-bold text-sm">
-              W
-            </span>
+            <span className="text-primary-foreground font-bold text-sm">W</span>
           </div>
           <span className="font-serif text-xl font-bold tracking-tight group-hover:opacity-80 transition">
             Whisper
@@ -102,7 +97,6 @@ export function AppSidebar() {
         </Link>
       </SidebarHeader>
 
-      {/* MAIN NAV */}
       <SidebarContent className="px-2 space-y-6">
         <SidebarMenu>
           {navItems.map((item) => (
@@ -112,10 +106,7 @@ export function AppSidebar() {
                 isActive={isActive(item.href)}
                 className="rounded-2xl px-4 py-3 text-sm font-medium transition-all hover:bg-muted"
               >
-                <Link
-                  href={item.href}
-                  className="flex items-center gap-3"
-                >
+                <Link href={item.href} className="flex items-center gap-3">
                   <item.icon className="size-4" />
                   {item.label}
                 </Link>
@@ -124,7 +115,7 @@ export function AppSidebar() {
           ))}
         </SidebarMenu>
 
-        {/* TRENDING */}
+        {/* TRENDING WHISPERS */}
         <div className="px-3">
           <div className="flex items-center gap-2 mb-3">
             <Flame className="size-4 text-orange-500" />
@@ -132,15 +123,10 @@ export function AppSidebar() {
               Trending Whispers
             </span>
           </div>
-
           {loadingTrending ? (
-            <div className="text-xs text-muted-foreground px-2 py-2">
-              Loading...
-            </div>
+            <div className="text-xs text-muted-foreground px-2 py-2">Loading...</div>
           ) : trending.length === 0 ? (
-            <div className="text-xs text-muted-foreground px-2 py-2">
-              No trending posts yet.
-            </div>
+            <div className="text-xs text-muted-foreground px-2 py-2">No trending posts yet.</div>
           ) : (
             <div className="space-y-1">
               {trending.map((post, i) => (
@@ -149,18 +135,11 @@ export function AppSidebar() {
                   href={`/feed/${post.id}`}
                   className="flex items-start gap-2 rounded-xl px-2 py-2 hover:bg-muted transition-colors"
                 >
-                  <span className="text-xs font-bold text-muted-foreground w-4 shrink-0 mt-0.5">
-                    {i + 1}
-                  </span>
-
+                  <span className="text-xs font-bold text-muted-foreground w-4 shrink-0 mt-0.5">{i + 1}</span>
                   <div className="min-w-0">
-                    <p className="text-xs font-medium truncate">
-                      {post.title}
-                    </p>
-
+                    <p className="text-xs font-medium truncate">{post.title}</p>
                     <p className="text-[10px] text-muted-foreground">
-                      {post.flair ?? "General"} · ♥{" "}
-                      {post.reactions?.[0]?.count ?? 0}
+                      {post.flair ?? "General"} · ♥ {post.reactions?.[0]?.count ?? 0}
                     </p>
                   </div>
                 </Link>
@@ -168,9 +147,39 @@ export function AppSidebar() {
             </div>
           )}
         </div>
+
+        {/* TRENDING HASHTAGS */}
+        <div className="px-3">
+          <div className="flex items-center gap-2 mb-3">
+            <Hash className="size-4 text-primary" />
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Trending Tags
+            </span>
+          </div>
+          {loadingTags ? (
+            <div className="text-xs text-muted-foreground px-2 py-2">Loading...</div>
+          ) : trendingTags.length === 0 ? (
+            <div className="text-xs text-muted-foreground px-2 py-2">No hashtags yet.</div>
+          ) : (
+            <div className="space-y-1">
+              {trendingTags.map(({ tag, count }) => (
+                <button
+                  key={tag}
+                  onClick={() => router.push(`/feed/hashtag/${tag.replace("#", "")}`)}
+                  className="flex items-center justify-between w-full rounded-xl px-2 py-2 hover:bg-muted transition-colors text-left"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Hash className="size-3 text-primary shrink-0" />
+                    <span className="text-xs font-medium text-foreground truncate">{tag.replace("#", "")}</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground shrink-0 ml-2">{count} posts</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </SidebarContent>
 
-      {/* FOOTER */}
       <SidebarFooter className="px-2 py-3">
         <SidebarMenu>
           <SidebarMenuItem>

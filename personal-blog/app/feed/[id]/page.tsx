@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { HashtagText } from "@/components/HashtagText"
 import {
   Heart, MessageCircle, Clock, ArrowLeft, Eye, Lock, VolumeX, ShieldOff,
   User, Bookmark, Bell, ImagePlus, X as XIcon, ChevronLeft, ChevronRight,
@@ -53,32 +54,51 @@ function Lightbox({ images, startIndex, onClose }: { images: string[], startInde
 function ImageGrid({ images, onView }: { images: string[], onView: (index: number) => void }) {
   if (!images || images.length === 0) return null
   const count = images.length
-  const wrapperClass = "mt-3 rounded-2xl overflow-hidden border border-border bg-muted relative"
+  const wrapperClass = "mt-3 rounded-2xl overflow-hidden border border-border bg-muted/30 relative"
   const imgClass = "w-full h-full object-cover hover:opacity-95 transition-all cursor-pointer"
+
+  // Single image/GIF — show fully, no cropping, max height 320px
   if (count === 1) return (
-    <div className={wrapperClass} style={{ maxHeight: "500px", height: "auto" }} onClick={() => onView(0)}>
-      <img src={images[0]} className="w-full h-auto object-contain bg-black/5" />
+    <div className={wrapperClass} onClick={() => onView(0)}>
+      <img
+        src={images[0]}
+        className="cursor-pointer rounded-2xl"
+        style={{ maxHeight: "320px", width: "auto", maxWidth: "100%", display: "block" }}
+      />
     </div>
   )
+
   if (count === 2) return (
-    <div className={wrapperClass} style={{ height: "280px" }}>
+    <div className={wrapperClass} style={{ height: "240px" }}>
       <div className="flex gap-1 h-full">
-        {images.slice(0, 2).map((url, i) => <div key={i} className="flex-1 min-w-0" onClick={() => onView(i)}><img src={url} className={imgClass} /></div>)}
+        {images.slice(0, 2).map((url, i) => (
+          <div key={i} className="flex-1 min-w-0" onClick={() => onView(i)}>
+            <img src={url} className={imgClass} />
+          </div>
+        ))}
       </div>
     </div>
   )
+
   if (count === 3) return (
-    <div className={wrapperClass} style={{ height: "280px" }}>
+    <div className={wrapperClass} style={{ height: "240px" }}>
       <div className="flex gap-1 h-full">
-        <div className="flex-[2] min-w-0" onClick={() => onView(0)}><img src={images[0]} className={imgClass} /></div>
+        <div className="flex-[2] min-w-0" onClick={() => onView(0)}>
+          <img src={images[0]} className={imgClass} />
+        </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          {images.slice(1, 3).map((url, i) => <div key={i} className="flex-1 min-h-0" onClick={() => onView(i + 1)}><img src={url} className={imgClass} /></div>)}
+          {images.slice(1, 3).map((url, i) => (
+            <div key={i} className="flex-1 min-h-0" onClick={() => onView(i + 1)}>
+              <img src={url} className={imgClass} />
+            </div>
+          ))}
         </div>
       </div>
     </div>
   )
+
   return (
-    <div className={wrapperClass} style={{ height: "280px" }}>
+    <div className={wrapperClass} style={{ height: "240px" }}>
       <div className="grid grid-cols-2 grid-rows-2 gap-1 h-full">
         {images.slice(0, 4).map((url, i) => (
           <div key={i} className="relative h-full w-full min-h-0" onClick={() => onView(i)}>
@@ -187,31 +207,47 @@ function CommentNode({
   const children = allComments.filter(c => c.parent_id === comment.id)
   const [showReplyBox, setShowReplyBox] = useState(false)
   const [replyContent, setReplyContent] = useState("")
+  const [replyImages, setReplyImages] = useState<File[]>([])
+  const [replyImagePreviews, setReplyImagePreviews] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [expanded, setExpanded] = useState(true)
   const [activeHover, setActiveHover] = useState<string | null>(null)
+  const replyImageRef = useRef<HTMLInputElement>(null)
   const isHighlighted = highlightedCommentId === comment.id
 
-  // Cap visual indent at 4 levels to avoid too-narrow columns
-  const indented = depth > 0
-
   const handleSubmitReply = async () => {
-    if (!currentUser || !replyContent.trim()) return
+    if (!currentUser || (!replyContent.trim() && replyImages.length === 0)) return
     setSubmitting(true)
+
+    const image_urls: string[] = []
+    for (const file of replyImages) {
+      const ext = file.name.split(".").pop()
+      const path = `${currentUser.id}/comments/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const { error } = await supabase.storage.from("post-images").upload(path, file)
+      if (!error) {
+        const { data: urlData } = supabase.storage.from("post-images").getPublicUrl(path)
+        image_urls.push(urlData.publicUrl)
+      }
+    }
+
     const { error } = await supabase.from("comments").insert({
       post_id: postId,
       user_id: currentUser.id,
       content: replyContent.trim(),
       parent_id: comment.id,
-      image_urls: [],
+      image_urls,
     })
+
     if (error) {
       console.error("Reply error:", error)
       alert(`Failed to save reply: ${error.message}`)
       setSubmitting(false)
       return
     }
+
     setReplyContent("")
+    setReplyImages([])
+    setReplyImagePreviews([])
     setShowReplyBox(false)
     setExpanded(true)
     onReplySubmitted()
@@ -219,7 +255,7 @@ function CommentNode({
   }
 
   return (
-    <div className={indented ? "pl-3 sm:pl-5 border-l-2 border-border/50 mt-2" : ""}>
+    <div className={depth > 0 ? "pl-3 sm:pl-5 border-l-2 border-border/50 mt-2" : ""}>
       {/* Comment bubble */}
       <article
         id={`comment-${comment.id}`}
@@ -255,10 +291,13 @@ function CommentNode({
         </div>
 
         {/* Content */}
-        <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">{comment.content}</p>
+        <HashtagText
+  text={comment.content}
+  className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap"
+/>
         <ImageGrid images={comment.image_urls ?? []} onView={(i) => openLightbox(comment.image_urls ?? [], i)} />
 
-        {/* Actions row */}
+        {/* Actions */}
         <div className="flex items-center gap-3 mt-3">
           {!postLocked && currentUser && (
             <button
@@ -298,20 +337,66 @@ function CommentNode({
             autoFocus
             className="w-full border border-border rounded-xl p-2.5 h-20 resize-none bg-background text-xs outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
           />
-          <div className="flex gap-2 mt-2">
+          {/* Image previews */}
+          {replyImagePreviews.length > 0 && (
+            <div className="flex gap-2 flex-wrap mt-2">
+              {replyImagePreviews.map((preview, i) => (
+                <div key={i} className="relative">
+                  <img src={preview} className="size-14 rounded-xl object-cover border border-border" />
+                  <button
+                    onClick={() => {
+                      setReplyImages(prev => prev.filter((_, j) => j !== i))
+                      setReplyImagePreviews(prev => prev.filter((_, j) => j !== i))
+                    }}
+                    className="absolute -top-1.5 -right-1.5 size-4 rounded-full bg-foreground text-background flex items-center justify-center"
+                  >
+                    <XIcon className="size-2.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2 mt-2 items-center">
             <button
               onClick={handleSubmitReply}
-              disabled={submitting || !replyContent.trim()}
+              disabled={submitting || (!replyContent.trim() && replyImages.length === 0)}
               className="px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors"
             >
               {submitting ? "Replying..." : "Reply"}
             </button>
             <button
-              onClick={() => { setShowReplyBox(false); setReplyContent("") }}
+              onClick={() => {
+                setShowReplyBox(false)
+                setReplyContent("")
+                setReplyImages([])
+                setReplyImagePreviews([])
+              }}
               className="px-3 py-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium hover:bg-muted/70 transition-colors"
             >
               Cancel
             </button>
+            {replyImages.length < 4 && (
+              <button
+                onClick={() => replyImageRef.current?.click()}
+                className="p-1.5 rounded-full border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground ml-1"
+              >
+                <ImagePlus className="size-3.5" />
+              </button>
+            )}
+            <input
+              ref={replyImageRef}
+              type="file"
+              accept="image/*,.gif"
+              multiple
+              className="hidden"
+              onChange={e => {
+                const files = Array.from(e.target.files ?? [])
+                const toAdd = files.slice(0, 4 - replyImages.length)
+                setReplyImages(prev => [...prev, ...toAdd])
+                setReplyImagePreviews(prev => [...prev, ...toAdd.map(f => URL.createObjectURL(f))])
+                if (replyImageRef.current) replyImageRef.current.value = ""
+              }}
+            />
           </div>
         </div>
       )}
@@ -386,7 +471,6 @@ export default function PostPage() {
     if (data) setPost(data)
   }
 
-  // Fetch ALL comments for this post — tree is built client-side
   const fetchAllComments = async () => {
     const { data } = await supabase
       .from("comments")
@@ -487,7 +571,7 @@ export default function PostPage() {
 
   const handleComment = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user || !content.trim()) return
+    if (!user || (!content.trim() && commentImages.length === 0)) return
     if (post?.locked) return
     const image_urls: string[] = []
     for (const file of commentImages) {
@@ -594,9 +678,10 @@ export default function PostPage() {
           </div>
 
           <h1 className="mt-4 font-serif text-2xl leading-snug text-foreground md:text-3xl">{post.title}</h1>
-          <p className="mt-6 text-sm leading-relaxed text-muted-foreground border-t border-border pt-6 whitespace-pre-wrap">
-            {post.content}
-          </p>
+          <HashtagText
+            text={post.content}
+            className="mt-6 text-sm leading-relaxed text-muted-foreground border-t border-border pt-6 whitespace-pre-wrap block"
+          />
           <ImageGrid images={post.image_urls ?? []} onView={(i) => openLightbox(post.image_urls ?? [], i)} />
 
           <div className="mt-6 flex items-center gap-5 border-t border-border pt-5">
@@ -714,7 +799,14 @@ export default function PostPage() {
                 <ImagePlus className="size-4" />
               </button>
             )}
-            <input ref={commentImageRef} type="file" accept="image/*,.gif" multiple className="hidden" onChange={handleCommentImageSelect} />
+            <input
+              ref={commentImageRef}
+              type="file"
+              accept="image/*,.gif"
+              multiple
+              className="hidden"
+              onChange={handleCommentImageSelect}
+            />
           </div>
         </article>
       )}

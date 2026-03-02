@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { PostCard } from "@/components/PostCard"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, ImagePlus, X as XIcon, AlertCircle, Tag } from "lucide-react"
+import { Search, ImagePlus, X as XIcon, AlertCircle, Tag, ArrowUp } from "lucide-react"
 import { timeAgo } from "@/lib/timeAgo"
 import Link from "next/link"
 
@@ -24,6 +24,7 @@ export default function FeedContent() {
   const [content, setContent] = useState("")
   const [flair, setFlair] = useState("")
   const [posts, setPosts] = useState<any[]>([])
+  const [pendingPosts, setPendingPosts] = useState<any[]>([])
   const [flairs, setFlairs] = useState<string[]>([])
   const [isExpanded, setIsExpanded] = useState(false)
   const [flairSearch, setFlairSearch] = useState("")
@@ -33,24 +34,21 @@ export default function FeedContent() {
   const [postStatus, setPostStatus] = useState<PostStatus>("idle")
   const [validationMsg, setValidationMsg] = useState<string | null>(null)
 
-  // Current user info for live avatar override
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [liveAvatar, setLiveAvatar] = useState<string | null>(null)
-
   const [mounted, setMounted] = useState(false)
+
   const dropdownRef = useRef<HTMLDivElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const topRef = useRef<HTMLDivElement>(null)
 
-  // Prevent SSR hydration mismatch from localStorage reads
   useEffect(() => { setMounted(true) }, [])
 
-  // Get current user + seed liveAvatar from localStorage or DB
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       setCurrentUserId(user.id)
-      // Use cached live URL if available
       const cached = localStorage.getItem(`live_avatar_url_${user.id}`)
       if (cached) { setLiveAvatar(cached); return }
       const { data } = await supabase.from("profiles").select("avatar_url").eq("id", user.id).single()
@@ -59,7 +57,6 @@ export default function FeedContent() {
     init()
   }, [])
 
-  // Listen for avatar changes from profile page
   useEffect(() => {
     const onAvatarUpdated = (e: Event) => {
       const detail = (e as CustomEvent<{ avatar_url: string; userId: string }>).detail
@@ -74,7 +71,7 @@ export default function FeedContent() {
       window.removeEventListener("avatar-updated", onAvatarUpdated)
       window.removeEventListener("storage", onStorage)
     }
-  }, [])
+  }, [currentUserId])
 
   const fetchFlairs = async () => {
     const { data } = await supabase.from("flairs").select("name").order("name")
@@ -96,7 +93,11 @@ export default function FeedContent() {
   }
 
   useEffect(() => { fetchFlairs() }, [])
-  useEffect(() => { fetchPosts() }, [currentFlair, currentSort])
+
+  useEffect(() => {
+    setPendingPosts([])
+    fetchPosts()
+  }, [currentFlair, currentSort])
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -106,6 +107,45 @@ export default function FeedContent() {
     document.addEventListener("mousedown", handleClick)
     return () => document.removeEventListener("mousedown", handleClick)
   }, [])
+
+  // ── Realtime: watch for new posts from other users ────────────────────────
+  useEffect(() => {
+    if (!currentUserId) return
+
+    const channel = supabase
+      .channel("feed-realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "posts" },
+        async (payload) => {
+          // Skip own posts
+          if (payload.new.user_id === currentUserId) return
+          // Skip if flair filter doesn't match
+          if (currentFlair !== "All" && payload.new.flair !== currentFlair) return
+
+          // Fetch full post with profile info
+          const { data } = await supabase
+            .from("posts")
+            .select("*, reactions(count), comments(count), profiles(username, avatar_url)")
+            .eq("id", payload.new.id)
+            .single()
+
+          if (data) {
+            setPendingPosts(prev => [data, ...prev])
+          }
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [currentUserId, currentFlair])
+
+  // ── Flush pending posts into feed ─────────────────────────────────────────
+  const flushPendingPosts = () => {
+    setPosts(prev => [...pendingPosts, ...prev])
+    setPendingPosts([])
+    topRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -139,7 +179,6 @@ export default function FeedContent() {
     } catch { setPostStatus("error") }
   }
 
-  // For the current user's posts, override with live avatar so changes show instantly
   const getPostAvatar = (post: any) => {
     if (currentUserId && post.user_id === currentUserId && liveAvatar) return liveAvatar
     return post.profiles?.avatar_url ?? ""
@@ -149,6 +188,10 @@ export default function FeedContent() {
 
   return (
     <div className="max-w-4xl mx-auto w-full px-6 py-6">
+      {/* Scroll anchor */}
+      <div ref={topRef} />
+
+      {/* ── Validation toast ── */}
       {validationMsg && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 bg-card border border-orange-500/30 rounded-2xl px-5 py-3 shadow-xl">
           <AlertCircle className="size-4 text-orange-500" />
@@ -156,31 +199,61 @@ export default function FeedContent() {
         </div>
       )}
 
-      {/* Post Composer */}
+      {/* ── New posts pill ── */}
+      {pendingPosts.length > 0 && (
+        <div
+          className="fixed top-5 left-1/2 -translate-x-1/2 z-[90]"
+          style={{ animation: "slideDown 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)" }}
+        >
+          <button
+            onClick={flushPendingPosts}
+            className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-full shadow-2xl hover:bg-primary/90 active:scale-95 transition-all"
+          >
+            <ArrowUp className="size-4" />
+            {pendingPosts.length} new {pendingPosts.length === 1 ? "whisper" : "whispers"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Post Composer ── */}
       <div className="rounded-2xl border border-border bg-card p-4 mb-6 shadow-sm">
         {!isExpanded ? (
-          <button onClick={() => setIsExpanded(true)} className="w-full text-left text-sm text-muted-foreground px-2 py-1">Whisper something...</button>
+          <button onClick={() => setIsExpanded(true)} className="w-full text-left text-sm text-muted-foreground px-2 py-1">
+            Whisper something...
+          </button>
         ) : (
           <div className="flex flex-col gap-3">
-            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" className="w-full bg-transparent text-lg font-semibold outline-none border-b border-border pb-2" autoFocus />
-            <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Content" className="w-full bg-transparent resize-none outline-none text-sm text-muted-foreground h-24" />
-
+            <input
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Title"
+              className="w-full bg-transparent text-lg font-semibold outline-none border-b border-border pb-2"
+              autoFocus
+            />
+            <textarea
+              value={content}
+              onChange={e => setContent(e.target.value)}
+              placeholder="Content"
+              className="w-full bg-transparent resize-none outline-none text-sm text-muted-foreground h-24"
+            />
             {imagePreviews.length > 0 && (
               <div className="flex gap-2 mb-2">
                 {imagePreviews.map((p, i) => (
                   <div key={i} className="relative group">
                     <img src={p} className="size-16 rounded-lg object-cover border border-border" />
-                    <button onClick={() => {
-                      setImageFiles(f => f.filter((_, idx) => idx !== i))
-                      setImagePreviews(p => p.filter((_, idx) => idx !== i))
-                    }} className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => {
+                        setImageFiles(f => f.filter((_, idx) => idx !== i))
+                        setImagePreviews(p => p.filter((_, idx) => idx !== i))
+                      }}
+                      className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
                       <XIcon className="size-3" />
                     </button>
                   </div>
                 ))}
               </div>
             )}
-
             <div className="flex items-center justify-between pt-3 border-t border-border">
               <div className="flex items-center gap-3">
                 <div className="relative" ref={dropdownRef}>
@@ -192,7 +265,6 @@ export default function FeedContent() {
                     <Tag className="size-3 text-muted-foreground" />
                     <span className="truncate">{flair || "Add Flair"}</span>
                   </button>
-
                   {showFlairDropdown && (
                     <div className="absolute top-full mt-2 left-0 w-52 bg-card border border-border rounded-xl shadow-2xl z-[110] p-2 animate-in fade-in zoom-in-95 duration-100">
                       <div className="flex items-center px-2 py-1 border-b border-border mb-1">
@@ -201,7 +273,7 @@ export default function FeedContent() {
                           className="bg-transparent outline-none text-xs w-full py-1"
                           placeholder="Search..."
                           value={flairSearch}
-                          onChange={(e) => setFlairSearch(e.target.value)}
+                          onChange={e => setFlairSearch(e.target.value)}
                         />
                       </div>
                       <div className="max-h-48 overflow-y-auto overflow-x-hidden custom-scrollbar">
@@ -214,19 +286,22 @@ export default function FeedContent() {
                             {f}
                           </button>
                         ))}
-                        {filteredFlairs.length === 0 && <p className="text-[10px] text-center py-2 text-muted-foreground">No results</p>}
+                        {filteredFlairs.length === 0 && (
+                          <p className="text-[10px] text-center py-2 text-muted-foreground">No results</p>
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
-
-                <button onClick={() => imageInputRef.current?.click()} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors">
+                <button
+                  onClick={() => imageInputRef.current?.click()}
+                  className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
                   <ImagePlus className="size-4" />
                   <span>{imageFiles.length}/4</span>
                 </button>
                 <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
               </div>
-
               <div className="flex gap-2">
                 <Button variant="ghost" size="sm" className="rounded-full h-8 px-4" onClick={() => setIsExpanded(false)}>Cancel</Button>
                 <Button size="sm" className="rounded-full h-8 px-4" onClick={handlePost} disabled={postStatus !== "idle"}>
@@ -238,22 +313,30 @@ export default function FeedContent() {
         )}
       </div>
 
-      {/* Filter Bar */}
+      {/* ── Filter Bar ── */}
       <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-md py-4 mb-6 border-b border-border flex items-center gap-4">
         <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide flex-1">
           {flairs.map(f => (
-            <button key={f} onClick={() => router.push(`/feed?flair=${f}&sort=${currentSort}`)} className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium border transition-all ${currentFlair === f ? "bg-primary text-white" : "bg-card"}`}>{f}</button>
+            <button
+              key={f}
+              onClick={() => router.push(`/feed?flair=${f}&sort=${currentSort}`)}
+              className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium border transition-all ${
+                currentFlair === f ? "bg-primary text-white" : "bg-card"
+              }`}
+            >
+              {f}
+            </button>
           ))}
         </div>
         {mounted && (
-          <Select value={currentSort} onValueChange={(v) => router.push(`/feed?flair=${currentFlair}&sort=${v}`)}>
+          <Select value={currentSort} onValueChange={v => router.push(`/feed?flair=${currentFlair}&sort=${v}`)}>
             <SelectTrigger className="w-[130px] rounded-full h-8 text-xs px-4"><SelectValue /></SelectTrigger>
             <SelectContent>{sortOptions.map(s => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}</SelectContent>
           </Select>
         )}
       </div>
 
-      {/* Post Grid */}
+      {/* ── Post Grid ── */}
       <div className="grid gap-6 md:grid-cols-2">
         {posts.map(post => (
           <Link href={`/feed/${post.id}`} key={post.id}>
