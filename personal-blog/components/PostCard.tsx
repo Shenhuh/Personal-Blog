@@ -1,3 +1,5 @@
+"use client"
+
 import { Heart, MessageCircle, Clock, Play, Pause, Volume2, VolumeX } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useRef, useState } from "react"
