@@ -1,5 +1,6 @@
-import { Heart, MessageCircle, Clock } from "lucide-react"
+import { Heart, MessageCircle, Clock, Play, Pause, Volume2, VolumeX } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { useRef, useState } from "react"
 
 interface PostCardProps {
   title: string
@@ -11,6 +12,78 @@ interface PostCardProps {
   username?: string
   avatar?: string
   imageUrls?: string[]
+  videoUrl?: string | null
+}
+
+function VideoPlayer({ src }: { src: string }) {
+  if (!src || src.trim() === "") return null
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [playing, setPlaying] = useState(false)
+  const [muted, setMuted] = useState(true)
+  const [progress, setProgress] = useState(0)
+
+  const toggle = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const v = videoRef.current
+    if (!v) return
+    playing ? v.pause() : v.play()
+    setPlaying(!playing)
+  }
+
+  const toggleMute = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const v = videoRef.current
+    if (!v) return
+    v.muted = !muted
+    setMuted(!muted)
+  }
+
+  const onTimeUpdate = () => {
+    const v = videoRef.current
+    if (!v || !v.duration) return
+    setProgress((v.currentTime / v.duration) * 100)
+  }
+
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const v = videoRef.current
+    if (!v) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    v.currentTime = ((e.clientX - rect.left) / rect.width) * v.duration
+  }
+
+  return (
+    <div className="relative w-full rounded-xl overflow-hidden bg-black group/video mt-4">
+      <video
+        ref={videoRef}
+        src={src}
+        className="w-full max-h-56 object-contain"
+        muted
+        playsInline
+        onTimeUpdate={onTimeUpdate}
+        onEnded={() => setPlaying(false)}
+      />
+      <div className="absolute inset-0 flex flex-col justify-between p-2 opacity-0 group-hover/video:opacity-100 transition-opacity bg-gradient-to-t from-black/60 to-transparent">
+        <button onClick={toggle} className="absolute inset-0 flex items-center justify-center cursor-pointer">
+          <div className="bg-black/50 rounded-full p-3 backdrop-blur-sm hover:bg-black/70 transition-colors">
+            {playing
+              ? <Pause className="size-5 text-white" />
+              : <Play className="size-5 text-white fill-white" />}
+          </div>
+        </button>
+        <div className="mt-auto flex flex-col gap-1 pointer-events-auto">
+          <div className="w-full h-1 bg-white/30 rounded-full cursor-pointer" onClick={seek}>
+            <div className="h-1 bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
+          </div>
+          <div className="flex justify-end">
+            <button onClick={toggleMute} className="cursor-pointer text-white hover:text-primary transition-colors">
+              {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function PostCard({
@@ -23,15 +96,16 @@ export function PostCard({
   username = "Anonymous",
   avatar = "",
   imageUrls = [],
+  videoUrl = null,
 }: PostCardProps) {
 
   const renderImages = () => {
     const urls = imageUrls?.filter(Boolean) ?? []
     if (urls.length === 0) return null
-    
+
     const count = urls.length
     const wrapperClass = "mt-4 rounded-xl overflow-hidden border border-border bg-muted relative shrink-0"
-    const containerStyle = { height: "220px" } // Fixed height for a uniform grid
+    const containerStyle = { height: "220px" }
     const imgClass = "w-full h-full object-cover transition-opacity hover:opacity-90"
 
     if (count === 1) return (
@@ -69,7 +143,6 @@ export function PostCard({
       </div>
     )
 
-    // 4 or more images
     return (
       <div className={wrapperClass} style={containerStyle}>
         <div className="grid grid-cols-2 grid-rows-2 gap-1 h-full">
@@ -118,6 +191,9 @@ export function PostCard({
 
       {/* Images Grid */}
       {renderImages()}
+
+      {/* Video Player */}
+      {videoUrl && videoUrl.trim() !== "" && <VideoPlayer src={videoUrl} />}
 
       {/* Content Excerpt */}
       <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-muted-foreground flex-1">
