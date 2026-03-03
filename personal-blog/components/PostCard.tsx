@@ -1,8 +1,8 @@
 "use client"
 
-import { Heart, MessageCircle, Clock, Play, Pause, Volume2, VolumeX } from "lucide-react"
+import { Heart, MessageCircle, Clock, Play, Pause, Volume2, VolumeX, Maximize2, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { useRef, useState } from "react"
+import { useRef, useState, useEffect } from "react"
 
 interface PostCardProps {
   title: string
@@ -17,7 +17,8 @@ interface PostCardProps {
   videoUrl?: string | null
 }
 
-function VideoPlayer({ src }: { src: string }) {
+// ── Inline Video Player ───────────────────────────────────────────────────────
+function VideoPlayer({ src, onFullscreen }: { src: string; onFullscreen: () => void }) {
   if (!src || src.trim() === "") return null
   const videoRef = useRef<HTMLVideoElement>(null)
   const [playing, setPlaying] = useState(false)
@@ -68,10 +69,15 @@ function VideoPlayer({ src }: { src: string }) {
       <div className="absolute inset-0 flex flex-col justify-between p-2 opacity-0 group-hover/video:opacity-100 transition-opacity bg-gradient-to-t from-black/60 to-transparent">
         <button onClick={toggle} className="absolute inset-0 flex items-center justify-center cursor-pointer">
           <div className="bg-black/50 rounded-full p-3 backdrop-blur-sm hover:bg-black/70 transition-colors">
-            {playing
-              ? <Pause className="size-5 text-white" />
-              : <Play className="size-5 text-white fill-white" />}
+            {playing ? <Pause className="size-5 text-white" /> : <Play className="size-5 text-white fill-white" />}
           </div>
+        </button>
+        {/* Fullscreen button */}
+        <button
+          onClick={(e) => { e.preventDefault(); onFullscreen() }}
+          className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 hover:bg-black/70 transition-colors cursor-pointer z-10"
+        >
+          <Maximize2 className="size-3.5 text-white" />
         </button>
         <div className="mt-auto flex flex-col gap-1 pointer-events-auto">
           <div className="w-full h-1 bg-white/30 rounded-full cursor-pointer" onClick={seek}>
@@ -88,23 +94,99 @@ function VideoPlayer({ src }: { src: string }) {
   )
 }
 
+// ── Fullscreen Video Modal ────────────────────────────────────────────────────
+function VideoModal({ src, onClose }: { src: string; onClose: () => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [playing, setPlaying] = useState(false)
+  const [muted, setMuted] = useState(false)
+  const [progress, setProgress] = useState(0)
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [onClose])
+
+  const toggle = () => {
+    const v = videoRef.current
+    if (!v) return
+    playing ? v.pause() : v.play()
+    setPlaying(!playing)
+  }
+
+  const toggleMute = () => {
+    const v = videoRef.current
+    if (!v) return
+    v.muted = !muted
+    setMuted(!muted)
+  }
+
+  const onTimeUpdate = () => {
+    const v = videoRef.current
+    if (!v || !v.duration) return
+    setProgress((v.currentTime / v.duration) * 100)
+  }
+
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const v = videoRef.current
+    if (!v) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    v.currentTime = ((e.clientX - rect.left) / rect.width) * v.duration
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div className="relative w-full max-w-4xl px-4" onClick={e => e.stopPropagation()}>
+        <button
+          onClick={onClose}
+          className="absolute -top-10 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+        >
+          <X className="size-5 text-white" />
+        </button>
+        <div className="relative rounded-2xl overflow-hidden bg-black group/modal">
+          <video
+            ref={videoRef}
+            src={src}
+            className="w-full max-h-[80vh] object-contain"
+            playsInline
+            onTimeUpdate={onTimeUpdate}
+            onEnded={() => setPlaying(false)}
+          />
+          <div className="absolute inset-0 flex flex-col justify-between p-3 opacity-0 group-hover/modal:opacity-100 transition-opacity bg-gradient-to-t from-black/70 to-transparent">
+            <button onClick={toggle} className="absolute inset-0 flex items-center justify-center cursor-pointer">
+              <div className="bg-black/50 rounded-full p-4 backdrop-blur-sm hover:bg-black/70 transition-colors">
+                {playing ? <Pause className="size-7 text-white" /> : <Play className="size-7 text-white fill-white" />}
+              </div>
+            </button>
+            <div className="mt-auto flex flex-col gap-2 pointer-events-auto">
+              <div className="w-full h-1.5 bg-white/30 rounded-full cursor-pointer" onClick={seek}>
+                <div className="h-1.5 bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="flex justify-end">
+                <button onClick={toggleMute} className="cursor-pointer text-white hover:text-primary transition-colors">
+                  {muted ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function PostCard({
-  title,
-  excerpt,
-  tag,
-  timeAgo,
-  likes,
-  comments,
-  username = "Anonymous",
-  avatar = "",
-  imageUrls = [],
-  videoUrl = null,
+  title, excerpt, tag, timeAgo, likes, comments,
+  username = "Anonymous", avatar = "", imageUrls = [], videoUrl = null,
 }: PostCardProps) {
+  const [videoModal, setVideoModal] = useState(false)
 
   const renderImages = () => {
     const urls = imageUrls?.filter(Boolean) ?? []
     if (urls.length === 0) return null
-
     const count = urls.length
     const wrapperClass = "mt-4 rounded-xl overflow-hidden border border-border bg-muted relative shrink-0"
     const containerStyle = { height: "220px" }
@@ -115,36 +197,27 @@ export function PostCard({
         <img src={urls[0]} className={imgClass} loading="lazy" alt="" />
       </div>
     )
-
     if (count === 2) return (
       <div className={wrapperClass} style={containerStyle}>
         <div className="flex gap-1 h-full">
           {urls.slice(0, 2).map((url, i) => (
-            <div key={i} className="flex-1 min-w-0">
-              <img src={url} className={imgClass} loading="lazy" alt="" />
-            </div>
+            <div key={i} className="flex-1 min-w-0"><img src={url} className={imgClass} loading="lazy" alt="" /></div>
           ))}
         </div>
       </div>
     )
-
     if (count === 3) return (
       <div className={wrapperClass} style={containerStyle}>
         <div className="flex gap-1 h-full">
-          <div className="flex-[2] min-w-0">
-            <img src={urls[0]} className={imgClass} loading="lazy" alt="" />
-          </div>
+          <div className="flex-[2] min-w-0"><img src={urls[0]} className={imgClass} loading="lazy" alt="" /></div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
             {urls.slice(1, 3).map((url, i) => (
-              <div key={i} className="flex-1 min-h-0">
-                <img src={url} className={imgClass} loading="lazy" alt="" />
-              </div>
+              <div key={i} className="flex-1 min-h-0"><img src={url} className={imgClass} loading="lazy" alt="" /></div>
             ))}
           </div>
         </div>
       </div>
     )
-
     return (
       <div className={wrapperClass} style={containerStyle}>
         <div className="grid grid-cols-2 grid-rows-2 gap-1 h-full">
@@ -164,58 +237,60 @@ export function PostCard({
   }
 
   return (
-    <article className="group cursor-pointer rounded-2xl border border-border bg-card p-5 transition-all hover:border-foreground/20 hover:shadow-md flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-4">
-        {avatar ? (
-          <img src={avatar} className="size-7 rounded-full object-cover border border-border" loading="lazy" />
-        ) : (
-          <div className="size-7 rounded-full bg-muted border border-border" />
+    <>
+      {/* Fullscreen modal */}
+      {videoModal && videoUrl && (
+        <VideoModal src={videoUrl} onClose={() => setVideoModal(false)} />
+      )}
+
+      <article className="group cursor-pointer rounded-2xl border border-border bg-card p-5 transition-all hover:border-foreground/20 hover:shadow-md flex flex-col h-full">
+        {/* Header */}
+        <div className="flex items-center gap-2 mb-4">
+          {avatar
+            ? <img src={avatar} className="size-7 rounded-full object-cover border border-border" loading="lazy" />
+            : <div className="size-7 rounded-full bg-muted border border-border" />}
+          <span className="text-sm font-medium text-foreground">@{username}</span>
+        </div>
+
+        {/* Tag & Time */}
+        <div className="flex items-center gap-3">
+          <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 text-[10px] uppercase tracking-wider font-bold">
+            {tag}
+          </Badge>
+          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Clock className="size-3" />{timeAgo}
+          </span>
+        </div>
+
+        {/* Title */}
+        <h3 className="mt-3 font-serif text-lg leading-tight text-foreground group-hover:text-foreground/80 line-clamp-2">
+          {title}
+        </h3>
+
+        {/* Images */}
+        {renderImages()}
+
+        {/* Video */}
+        {videoUrl && videoUrl.trim() !== "" && (
+          <VideoPlayer src={videoUrl} onFullscreen={() => setVideoModal(true)} />
         )}
-        <span className="text-sm font-medium text-foreground">@{username}</span>
-      </div>
 
-      {/* Tags & Time */}
-      <div className="flex items-center gap-3">
-        <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 text-[10px] uppercase tracking-wider font-bold">
-          {tag}
-        </Badge>
-        <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-          <Clock className="size-3" />
-          {timeAgo}
-        </span>
-      </div>
+        {/* Excerpt */}
+        <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-muted-foreground flex-1">{excerpt}</p>
 
-      {/* Title */}
-      <h3 className="mt-3 font-serif text-lg leading-tight text-foreground group-hover:text-foreground/80 line-clamp-2">
-        {title}
-      </h3>
-
-      {/* Images Grid */}
-      {renderImages()}
-
-      {/* Video Player */}
-      {videoUrl && videoUrl.trim() !== "" && <VideoPlayer src={videoUrl} />}
-
-      {/* Content Excerpt */}
-      <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-muted-foreground flex-1">
-        {excerpt}
-      </p>
-
-      {/* Footer Actions */}
-      <div className="mt-5 flex items-center gap-4 border-t border-border pt-4">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-red-500">
-          <Heart className="size-3.5" />
-          <span>{likes}</span>
+        {/* Footer */}
+        <div className="mt-5 flex items-center gap-4 border-t border-border pt-4">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-red-500">
+            <Heart className="size-3.5" /><span>{likes}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
+            <MessageCircle className="size-3.5" /><span>{comments}</span>
+          </div>
+          <span className="ml-auto text-[10px] font-bold tracking-widest text-muted-foreground uppercase group-hover:text-foreground">
+            Read more
+          </span>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
-          <MessageCircle className="size-3.5" />
-          <span>{comments}</span>
-        </div>
-        <span className="ml-auto text-[10px] font-bold tracking-widest text-muted-foreground uppercase group-hover:text-foreground">
-          Read more
-        </span>
-      </div>
-    </article>
+      </article>
+    </>
   )
 }

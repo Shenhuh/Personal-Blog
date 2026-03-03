@@ -9,7 +9,7 @@ import { HashtagText } from "@/components/HashtagText"
 import {
   Heart, MessageCircle, Clock, ArrowLeft, Eye, Lock, VolumeX, ShieldOff,
   User, Bookmark, Bell, ImagePlus, X as XIcon, ChevronLeft, ChevronRight,
-  CornerDownRight, ChevronDown, ChevronUp
+  CornerDownRight, ChevronDown, ChevronUp, PlayCircle
 } from "lucide-react"
 import { timeAgo } from "@/lib/timeAgo"
 
@@ -50,6 +50,26 @@ function Lightbox({ images, startIndex, onClose }: { images: string[], startInde
   )
 }
 
+// ── MEDIA RENDERER (Supports Video & Images) ──────────────────────────────────
+function PostMedia({ post, openLightbox }: { post: any, openLightbox: (images: string[], index: number) => void }) {
+  const { image_urls, video_url } = post;
+
+  if (video_url) {
+    return (
+      <div className="mt-4 rounded-2xl overflow-hidden border border-border bg-black relative aspect-video max-h-[450px]">
+        <video 
+          src={video_url} 
+          controls 
+          className="w-full h-full object-contain"
+          poster={image_urls?.[0]} // Use first image as thumbnail if available
+        />
+      </div>
+    );
+  }
+
+  return <ImageGrid images={image_urls ?? []} onView={(i) => openLightbox(image_urls ?? [], i)} />;
+}
+
 // ── IMAGE GRID ────────────────────────────────────────────────────────────────
 function ImageGrid({ images, onView }: { images: string[], onView: (index: number) => void }) {
   if (!images || images.length === 0) return null
@@ -57,19 +77,18 @@ function ImageGrid({ images, onView }: { images: string[], onView: (index: numbe
   const wrapperClass = "mt-3 rounded-2xl overflow-hidden border border-border bg-muted/30 relative"
   const imgClass = "w-full h-full object-cover hover:opacity-95 transition-all cursor-pointer"
 
-  // Single image/GIF — show fully, no cropping, max height 320px
   if (count === 1) return (
     <div className={wrapperClass} onClick={() => onView(0)}>
       <img
         src={images[0]}
         className="cursor-pointer rounded-2xl"
-        style={{ maxHeight: "320px", width: "auto", maxWidth: "100%", display: "block" }}
+        style={{ maxHeight: "450px", width: "auto", maxWidth: "100%", display: "block", margin: "0 auto" }}
       />
     </div>
   )
 
   if (count === 2) return (
-    <div className={wrapperClass} style={{ height: "240px" }}>
+    <div className={wrapperClass} style={{ height: "320px" }}>
       <div className="flex gap-1 h-full">
         {images.slice(0, 2).map((url, i) => (
           <div key={i} className="flex-1 min-w-0" onClick={() => onView(i)}>
@@ -80,25 +99,8 @@ function ImageGrid({ images, onView }: { images: string[], onView: (index: numbe
     </div>
   )
 
-  if (count === 3) return (
-    <div className={wrapperClass} style={{ height: "240px" }}>
-      <div className="flex gap-1 h-full">
-        <div className="flex-[2] min-w-0" onClick={() => onView(0)}>
-          <img src={images[0]} className={imgClass} />
-        </div>
-        <div className="flex flex-1 flex-col gap-1 min-w-0">
-          {images.slice(1, 3).map((url, i) => (
-            <div key={i} className="flex-1 min-h-0" onClick={() => onView(i + 1)}>
-              <img src={url} className={imgClass} />
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-
   return (
-    <div className={wrapperClass} style={{ height: "240px" }}>
+    <div className={wrapperClass} style={{ height: "400px" }}>
       <div className="grid grid-cols-2 grid-rows-2 gap-1 h-full">
         {images.slice(0, 4).map((url, i) => (
           <div key={i} className="relative h-full w-full min-h-0" onClick={() => onView(i)}>
@@ -256,7 +258,6 @@ function CommentNode({
 
   return (
     <div className={depth > 0 ? "pl-3 sm:pl-5 border-l-2 border-border/50 mt-2" : ""}>
-      {/* Comment bubble */}
       <article
         id={`comment-${comment.id}`}
         className={`rounded-2xl border bg-card p-4 transition-all duration-700 ${
@@ -265,7 +266,6 @@ function CommentNode({
             : "border-border"
         }`}
       >
-        {/* Header */}
         <div className="flex items-center gap-2 mb-2">
           <div className="relative">
             <button
@@ -290,14 +290,12 @@ function CommentNode({
           <span className="text-[10px] text-muted-foreground ml-auto">{timeAgo(comment.created_at)}</span>
         </div>
 
-        {/* Content */}
         <HashtagText
-  text={comment.content}
-  className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap"
-/>
+          text={comment.content}
+          className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap"
+        />
         <ImageGrid images={comment.image_urls ?? []} onView={(i) => openLightbox(comment.image_urls ?? [], i)} />
 
-        {/* Actions */}
         <div className="flex items-center gap-3 mt-3">
           {!postLocked && currentUser && (
             <button
@@ -321,7 +319,6 @@ function CommentNode({
         </div>
       </article>
 
-      {/* Inline reply box */}
       {showReplyBox && (
         <div className="mt-2 pl-3 sm:pl-5 border-l-2 border-primary/40">
           <div className="flex items-center gap-2 mb-2 mt-1">
@@ -337,7 +334,6 @@ function CommentNode({
             autoFocus
             className="w-full border border-border rounded-xl p-2.5 h-20 resize-none bg-background text-xs outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
           />
-          {/* Image previews */}
           {replyImagePreviews.length > 0 && (
             <div className="flex gap-2 flex-wrap mt-2">
               {replyImagePreviews.map((preview, i) => (
@@ -401,7 +397,6 @@ function CommentNode({
         </div>
       )}
 
-      {/* Recursive children */}
       {expanded && children.length > 0 && (
         <div className="mt-2 space-y-2">
           {children.map(child => (
@@ -509,7 +504,6 @@ export default function PostPage() {
     fetchSavedAndWatch()
   }, [])
 
-  // ── Scroll + highlight from URL hash ──────────────────────────────────────
   const scrollToComment = (commentId: string) => {
     setHighlightedCommentId(commentId)
     let attempts = 0
@@ -541,7 +535,6 @@ export default function PostPage() {
     return () => window.removeEventListener("hashchange", onHashChange)
   }, [])
 
-  // ── Presence ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const channel = supabase.channel(`post-${id}`)
     channel
@@ -562,11 +555,6 @@ export default function PostPage() {
     setCommentImages(prev => [...prev, ...toAdd])
     setCommentImagePreviews(prev => [...prev, ...toAdd.map(f => URL.createObjectURL(f))])
     if (commentImageRef.current) commentImageRef.current.value = ""
-  }
-
-  const removeCommentImage = (index: number) => {
-    setCommentImages(prev => prev.filter((_, i) => i !== index))
-    setCommentImagePreviews(prev => prev.filter((_, i) => i !== index))
   }
 
   const handleComment = async () => {
@@ -678,11 +666,14 @@ export default function PostPage() {
           </div>
 
           <h1 className="mt-4 font-serif text-2xl leading-snug text-foreground md:text-3xl">{post.title}</h1>
+          
           <HashtagText
             text={post.content}
             className="mt-6 text-sm leading-relaxed text-muted-foreground border-t border-border pt-6 whitespace-pre-wrap block"
           />
-          <ImageGrid images={post.image_urls ?? []} onView={(i) => openLightbox(post.image_urls ?? [], i)} />
+
+          {/* Render Video or Image Grid */}
+          <PostMedia post={post} openLightbox={openLightbox} />
 
           <div className="mt-6 flex items-center gap-5 border-t border-border pt-5">
             <button
@@ -752,61 +743,54 @@ export default function PostPage() {
         </div>
       ) : (
         <article className="rounded-2xl border border-border bg-card p-4 md:p-6">
-          <div className="flex items-center gap-2 mb-4">
-            {currentProfile?.avatar_url
-              ? <img src={currentProfile.avatar_url} className="size-7 rounded-full object-cover" />
-              : <div className="size-7 rounded-full bg-muted" />}
-            <span className="text-sm font-medium text-foreground">
-              @{currentProfile?.username ?? "Write a comment"}
-            </span>
+          <div className="flex items-center gap-3 mb-4">
+             {currentProfile?.avatar_url
+              ? <img src={currentProfile.avatar_url} className="size-8 rounded-full object-cover" />
+              : <div className="size-8 rounded-full bg-muted" />}
+             <span className="text-sm font-medium">@{currentProfile?.username || 'Guest'}</span>
           </div>
           <textarea
             value={content}
             onChange={e => setContent(e.target.value)}
-            placeholder="Share your thoughts..."
-            className="w-full border rounded-xl p-3 mb-3 h-24 resize-none bg-background text-sm"
+            placeholder="What are your thoughts?"
+            className="w-full bg-transparent border-none focus:ring-0 text-sm h-32 resize-none"
           />
           {commentImagePreviews.length > 0 && (
-            <div className="flex gap-2 flex-wrap mb-3">
-              {commentImagePreviews.map((preview, i) => (
-                <div key={i} className="relative">
-                  <img src={preview} className="size-16 rounded-xl object-cover border border-border" />
-                  <button
-                    onClick={() => removeCommentImage(i)}
-                    className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-foreground text-background flex items-center justify-center"
+            <div className="flex gap-2 flex-wrap mb-4">
+              {commentImagePreviews.map((p, i) => (
+                <div key={i} className="relative size-20">
+                  <img src={p} className="w-full h-full object-cover rounded-lg border" />
+                  <button 
+                    onClick={() => {
+                      setCommentImages(prev => prev.filter((_, idx) => idx !== i));
+                      setCommentImagePreviews(prev => prev.filter((_, idx) => idx !== i));
+                    }}
+                    className="absolute -top-2 -right-2 bg-foreground text-background rounded-full p-0.5"
                   >
                     <XIcon className="size-3" />
                   </button>
                 </div>
               ))}
-              {commentImages.length < 4 && (
-                <button
-                  onClick={() => commentImageRef.current?.click()}
-                  className="size-16 rounded-xl border-2 border-dashed border-border flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground"
-                >
-                  <ImagePlus className="size-4" />
-                </button>
-              )}
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <Button onClick={handleComment} className="rounded-full">Comment</Button>
-            {commentImages.length === 0 && (
-              <button
-                onClick={() => commentImageRef.current?.click()}
-                className="p-2 rounded-full border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-              >
-                <ImagePlus className="size-4" />
-              </button>
-            )}
-            <input
+          <div className="flex items-center justify-between border-t pt-4">
+            <button 
+              onClick={() => commentImageRef.current?.click()}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ImagePlus className="size-5" />
+            </button>
+            <input 
               ref={commentImageRef}
-              type="file"
-              accept="image/*,.gif"
-              multiple
-              className="hidden"
+              type="file" 
+              className="hidden" 
+              accept="image/*" 
+              multiple 
               onChange={handleCommentImageSelect}
             />
+            <Button onClick={handleComment} disabled={!content.trim() && commentImages.length === 0}>
+              Post Comment
+            </Button>
           </div>
         </article>
       )}

@@ -917,17 +917,20 @@ export default function ProfilePage() {
                     ) : (
                       <>
                         <Link href={`/feed/${post.id}`}>
-                          <PostCard
-                            title={post.title}
-                            excerpt={post.content}
-                            tag={post.flair}
-                            timeAgo={timeAgo(post.created_at)}
-                            likes={post.reactions[0]?.count ?? 0}
-                            comments={post.comments[0]?.count ?? 0}
-                            username={post.profiles?.username ?? profile?.username}
-                            avatar={avatarSrc ?? post.profiles?.avatar_url ?? ""}
-                            imageUrls={post.image_urls ?? []}
-                          />
+                         
+
+<PostCard
+  title={post.title}
+  excerpt={post.content}
+  tag={post.flair}
+  timeAgo={timeAgo(post.created_at)}
+  likes={post.reactions[0]?.count ?? 0}
+  comments={post.comments[0]?.count ?? 0}
+  username={post.profiles?.username ?? profile?.username}
+  avatar={avatarSrc ?? post.profiles?.avatar_url ?? ""}
+  imageUrls={post.image_urls ?? []}
+  videoUrl={post.video_url ?? null}
+/>
                         </Link>
                         <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity z-10">
                           <button
