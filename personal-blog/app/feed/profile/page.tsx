@@ -75,7 +75,7 @@ function DraggableImage({ src, position, onChange, className, editing }: Draggab
   )
 }
 
-// ── POPOVER MENU (small floating, anchored) ──────────────────────────────────
+// ── POPOVER MENU ─────────────────────────────────────────────────────────────
 interface PopoverMenuProps {
   open: boolean
   onClose: () => void
@@ -84,7 +84,6 @@ interface PopoverMenuProps {
   onView?: () => void
   onChange: () => void
   onReposition?: () => void
-  // Mobile reposition mode — shows draggable preview inside popover
   repositionMode?: boolean
   repositionSrc?: string | null
   repositionPos?: { x: number; y: number }
@@ -103,7 +102,6 @@ function PopoverMenu({
   const popoverRef = useRef<HTMLDivElement>(null)
   const [style, setStyle] = useState<React.CSSProperties>({ position: "fixed", top: -9999, left: -9999, zIndex: 50, visibility: "hidden" })
 
-  // Always keep position updated — render hidden off-screen until coords are ready
   useEffect(() => {
     const update = () => {
       if (!anchorRef.current) return
@@ -114,7 +112,6 @@ function PopoverMenu({
       setStyle({ position: "fixed", top: anchor.bottom + 8, left, width: popW, zIndex: 50, visibility: "visible" })
     }
     if (open) {
-      // Use rAF so the DOM has painted and getBoundingClientRect is accurate
       requestAnimationFrame(() => { requestAnimationFrame(update) })
       window.addEventListener("scroll", update, true)
       window.addEventListener("resize", update)
@@ -127,7 +124,6 @@ function PopoverMenu({
     }
   }, [open, anchorRef, repositionMode])
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
@@ -142,11 +138,9 @@ function PopoverMenu({
 
   if (!open && style.visibility === "hidden") return null
 
-  // Reposition mode: fullscreen bottom sheet so the entire screen is the drag area
   if (repositionMode && repositionSrc && repositionPos && onRepositionChange) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col bg-black/90">
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 bg-card/95 backdrop-blur border-b border-border shrink-0">
           <span className="text-sm font-semibold text-foreground flex items-center gap-2">
             <Move className="size-4 text-muted-foreground" /> Drag to reposition
@@ -155,7 +149,6 @@ function PopoverMenu({
             <X className="size-4" />
           </button>
         </div>
-        {/* Full-screen drag area */}
         <div className="flex-1 relative overflow-hidden">
           <DraggableImage
             src={repositionSrc}
@@ -168,7 +161,6 @@ function PopoverMenu({
             Drag anywhere to adjust position
           </p>
         </div>
-        {/* Footer actions */}
         <div className="flex gap-3 p-4 bg-card/95 backdrop-blur border-t border-border shrink-0">
           <button
             onClick={onRepositionCancel}
@@ -191,7 +183,6 @@ function PopoverMenu({
     )
   }
 
-  // Normal menu
   return (
     <div ref={popoverRef} style={style} className="bg-card border border-border rounded-xl shadow-xl overflow-hidden py-1">
       {hasImage && onView && (
@@ -247,39 +238,31 @@ export default function ProfilePage() {
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [coverUploading, setCoverUploading] = useState(false)
 
-  // Popover open state
   const [avatarPopoverOpen, setAvatarPopoverOpen] = useState(false)
   const [coverPopoverOpen, setCoverPopoverOpen] = useState(false)
-  // Mobile: reposition inside the popover
   const [avatarRepositionInPopover, setAvatarRepositionInPopover] = useState(false)
   const [coverRepositionInPopover, setCoverRepositionInPopover] = useState(false)
 
-  // Anchor refs for popover
   const avatarAnchorRef = useRef<HTMLElement | null>(null)
   const coverAnchorRef = useRef<HTMLElement | null>(null)
-  const coverButtonRef = useRef<HTMLButtonElement>(null) // desktop "Edit cover" button anchor
+  const coverButtonRef = useRef<HTMLButtonElement>(null)
 
-  // Lightbox
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
-  // Desktop drag-on-banner reposition mode
   const [editingCover, setEditingCover] = useState(false)
   const [editingAvatar, setEditingAvatar] = useState(false)
 
   const [coverPos, setCoverPos] = useState({ x: 50, y: 50 })
   const [avatarPos, setAvatarPos] = useState({ x: 50, y: 50 })
-  // Temp pos for inside-popover reposition (committed on Save)
   const [tempAvatarPos, setTempAvatarPos] = useState({ x: 50, y: 50 })
   const [tempCoverPos, setTempCoverPos] = useState({ x: 50, y: 50 })
 
-  // Drag hint toast — shown briefly when entering desktop reposition mode
   const [dragHint, setDragHint] = useState(false)
   const showDragHint = () => {
     setDragHint(true)
     setTimeout(() => setDragHint(false), 2500)
   }
 
-  // Pending uploads
   const [pendingCoverSrc, setPendingCoverSrc] = useState<string | null>(null)
   const [pendingAvatarSrc, setPendingAvatarSrc] = useState<string | null>(null)
   const [pendingCoverBlob, setPendingCoverBlob] = useState<File | null>(null)
@@ -367,7 +350,6 @@ export default function ProfilePage() {
     fetchProfile()
   }
 
-  // ── COVER ────────────────────────────────────────────────────────────────
   const handleCoverFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -390,7 +372,6 @@ export default function ProfilePage() {
     if (isMobile()) {
       setTempCoverPos({ ...coverPos })
       setCoverRepositionInPopover(true)
-      // keep popover open, switch to reposition view
     } else {
       setCoverPopoverOpen(false)
       setEditingCover(true)
@@ -437,7 +418,6 @@ export default function ProfilePage() {
     else setCoverPos({ x: 50, y: 50 })
   }
 
-  // ── AVATAR ───────────────────────────────────────────────────────────────
   const handleAvatarFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -460,7 +440,6 @@ export default function ProfilePage() {
     if (isMobile()) {
       setTempAvatarPos({ ...avatarPos })
       setAvatarRepositionInPopover(true)
-      // keep popover open, switch to reposition view
     } else {
       setAvatarPopoverOpen(false)
       setEditingAvatar(true)
@@ -486,8 +465,6 @@ export default function ProfilePage() {
         await supabase.from("profiles").update({ avatar_url: freshUrl, avatar_position: finalPos }).eq("id", user.id)
         setProfile((prev: any) => ({ ...prev, avatar_url: freshUrl, avatar_position: finalPos }))
         setAvatarPos(finalPos)
-        // Notify other components (header, post cards) that avatar changed
-        // Broadcast to all components via custom event and user-scoped localStorage key
         localStorage.setItem(`live_avatar_url_${user.id}`, freshUrl)
         window.dispatchEvent(new CustomEvent("avatar-updated", { detail: { avatar_url: freshUrl, userId: user.id } }))
       }
@@ -562,6 +539,113 @@ export default function ProfilePage() {
   const coverSrc = pendingCoverSrc ?? profile?.cover_url ?? null
   const avatarSrc = pendingAvatarSrc ?? profile?.avatar_url ?? null
 
+  // Shared post card with action buttons
+  const PostCardWithActions = ({ post }: { post: any }) => (
+    <>
+      <Link href={`/feed/${post.id}`}>
+        <PostCard
+          title={post.title}
+          excerpt={post.content}
+          tag={post.flair}
+          timeAgo={timeAgo(post.created_at)}
+          likes={post.reactions[0]?.count ?? 0}
+          comments={post.comments[0]?.count ?? 0}
+          username={post.profiles?.username ?? profile?.username}
+          avatar={avatarSrc ?? post.profiles?.avatar_url ?? ""}
+          imageUrls={post.image_urls ?? []}
+          videoUrl={post.video_url ?? null}
+        />
+      </Link>
+      <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity z-10">
+        <button
+          onClick={(e) => { e.preventDefault(); startEditPost(post) }}
+          className="p-1.5 rounded-lg bg-card border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground shadow-sm"
+        >
+          <Pencil className="size-3.5" />
+        </button>
+        <button
+          onClick={(e) => { e.preventDefault(); handleToggleLock(post) }}
+          className={`p-1.5 rounded-lg bg-card border border-border hover:bg-muted transition-colors shadow-sm ${post.locked ? "text-orange-500" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          {post.locked ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}
+        </button>
+        <button
+          onClick={(e) => { e.preventDefault(); handleDeletePost(post.id) }}
+          className="p-1.5 rounded-lg bg-card border border-border hover:bg-red-500/10 transition-colors text-muted-foreground hover:text-red-500 shadow-sm"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      </div>
+    </>
+  )
+
+  // Edit form
+  const EditPostForm = () => (
+    <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
+      <input
+        value={editTitle}
+        onChange={e => setEditTitle(e.target.value)}
+        className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-background outline-none font-semibold focus:border-primary transition-colors"
+        placeholder="Title"
+      />
+      <textarea
+        value={editContent}
+        onChange={e => setEditContent(e.target.value)}
+        className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-background outline-none resize-none h-28 focus:border-primary transition-colors"
+        placeholder="Content"
+      />
+      {editExistingImages.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {editExistingImages.map((url, i) => (
+            <div key={i} className="relative">
+              <img src={url} className="size-14 rounded-lg object-cover border border-border" />
+              <button
+                onClick={() => setEditExistingImages(prev => prev.filter((_, idx) => idx !== i))}
+                className="absolute -top-1.5 -right-1.5 size-4 rounded-full bg-destructive text-white flex items-center justify-center"
+              >
+                <X className="size-2.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {editImagePreviews.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {editImagePreviews.map((url, i) => (
+            <div key={i} className="relative">
+              <img src={url} className="size-14 rounded-lg object-cover border border-border opacity-80" />
+              <button
+                onClick={() => {
+                  setEditImageFiles(prev => prev.filter((_, idx) => idx !== i))
+                  setEditImagePreviews(prev => prev.filter((_, idx) => idx !== i))
+                }}
+                className="absolute -top-1.5 -right-1.5 size-4 rounded-full bg-destructive text-white flex items-center justify-center"
+              >
+                <X className="size-2.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2 pt-1">
+        {(editExistingImages.length + editImageFiles.length) < 4 && (
+          <button
+            onClick={() => editImageRef.current?.click()}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+          >
+            <ImagePlus className="size-3.5" />
+            Add image
+          </button>
+        )}
+        <input ref={editImageRef} type="file" accept="image/*" multiple className="hidden" onChange={handleEditImageSelect} />
+        <div className="flex gap-2 ml-auto">
+          <Button size="sm" className="rounded-full" onClick={handleEditPost}>Save</Button>
+          <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setEditingPost(null)}>Cancel</Button>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div className="w-full min-h-screen bg-background">
 
@@ -631,7 +715,6 @@ export default function ProfilePage() {
 
       {/* ── COVER PHOTO BANNER ── */}
       <div className="relative w-full h-44 sm:h-56 md:h-64 bg-muted group/cover">
-
         {coverSrc ? (
           <DraggableImage
             key={coverSrc}
@@ -649,7 +732,6 @@ export default function ProfilePage() {
           <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-background to-transparent pointer-events-none" />
         )}
 
-        {/* Cover action buttons */}
         <div className={`absolute bottom-4 right-4 flex items-center gap-2 transition-opacity duration-200 ${editingCover ? "opacity-100" : "opacity-0 group-hover/cover:opacity-100"}`}>
           {editingCover ? (
             <>
@@ -682,10 +764,8 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* Invisible anchor for mobile — centered at bottom of banner */}
         <span ref={coverAnchorRef as React.RefObject<HTMLSpanElement>} className="absolute bottom-0 right-4 pointer-events-none sm:hidden" />
 
-        {/* Mobile tap zone */}
         {!editingCover && (
           <button
             className="absolute inset-0 w-full h-full bg-transparent sm:hidden"
@@ -702,8 +782,6 @@ export default function ProfilePage() {
 
         {/* Avatar row */}
         <div className="flex items-end justify-between -mt-10 sm:-mt-12 mb-4">
-
-          {/* Avatar */}
           <div className="relative shrink-0">
             {avatarSrc ? (
               <DraggableImage
@@ -718,7 +796,6 @@ export default function ProfilePage() {
               <div className="size-20 sm:size-24 md:size-28 rounded-2xl bg-muted border-4 border-background shadow-lg" />
             )}
 
-            {/* Desktop drag-mode save/cancel */}
             {editingAvatar && (
               <div className="absolute -bottom-9 left-0 flex items-center gap-1.5 z-10">
                 <button
@@ -740,7 +817,6 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {/* Popover trigger — camera icon on hover, always tappable */}
             {!editingAvatar && (
               <>
                 <button
@@ -750,7 +826,6 @@ export default function ProfilePage() {
                 >
                   <Camera className="size-5 text-white opacity-0 group-hover/av:opacity-100 transition-opacity drop-shadow" />
                 </button>
-                {/* Anchor for popover — sits at bottom-right of avatar so popup aligns nicely */}
                 <span ref={avatarAnchorRef} className="absolute bottom-0 right-0 pointer-events-none" />
               </>
             )}
@@ -847,116 +922,39 @@ export default function ProfilePage() {
                 <p className="text-sm text-muted-foreground mt-1">Your posts will appear here</p>
               </div>
             ) : (
-              <div className="grid gap-5 md:grid-cols-2 auto-rows-fr">
-                {filteredPosts.map(post => (
-                  <div key={post.id} className="relative group/card">
-                    {editingPost?.id === post.id ? (
-                      <div className="rounded-2xl border border-border bg-card p-5 space-y-3 h-full">
-                        <input
-                          value={editTitle}
-                          onChange={e => setEditTitle(e.target.value)}
-                          className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-background outline-none font-semibold focus:border-primary transition-colors"
-                          placeholder="Title"
-                        />
-                        <textarea
-                          value={editContent}
-                          onChange={e => setEditContent(e.target.value)}
-                          className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-background outline-none resize-none h-28 focus:border-primary transition-colors"
-                          placeholder="Content"
-                        />
-                        {editExistingImages.length > 0 && (
-                          <div className="flex gap-2 flex-wrap">
-                            {editExistingImages.map((url, i) => (
-                              <div key={i} className="relative">
-                                <img src={url} className="size-14 rounded-lg object-cover border border-border" />
-                                <button
-                                  onClick={() => setEditExistingImages(prev => prev.filter((_, idx) => idx !== i))}
-                                  className="absolute -top-1.5 -right-1.5 size-4 rounded-full bg-destructive text-white flex items-center justify-center"
-                                >
-                                  <X className="size-2.5" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {editImagePreviews.length > 0 && (
-                          <div className="flex gap-2 flex-wrap">
-                            {editImagePreviews.map((url, i) => (
-                              <div key={i} className="relative">
-                                <img src={url} className="size-14 rounded-lg object-cover border border-border opacity-80" />
-                                <button
-                                  onClick={() => {
-                                    setEditImageFiles(prev => prev.filter((_, idx) => idx !== i))
-                                    setEditImagePreviews(prev => prev.filter((_, idx) => idx !== i))
-                                  }}
-                                  className="absolute -top-1.5 -right-1.5 size-4 rounded-full bg-destructive text-white flex items-center justify-center"
-                                >
-                                  <X className="size-2.5" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2 pt-1">
-                          {(editExistingImages.length + editImageFiles.length) < 4 && (
-                            <button
-                              onClick={() => editImageRef.current?.click()}
-                              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
-                            >
-                              <ImagePlus className="size-3.5" />
-                              Add image
-                            </button>
-                          )}
-                          <input ref={editImageRef} type="file" accept="image/*" multiple className="hidden" onChange={handleEditImageSelect} />
-                          <div className="flex gap-2 ml-auto">
-                            <Button size="sm" className="rounded-full" onClick={handleEditPost}>Save</Button>
-                            <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setEditingPost(null)}>Cancel</Button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <Link href={`/feed/${post.id}`}>
-                         
+              <>
+                {/* Mobile Layout */}
+                <div className="flex flex-col gap-6 md:hidden">
+                  {filteredPosts.map(post => (
+                    <div key={post.id} className="relative group/card">
+                      {editingPost?.id === post.id
+                        ? <EditPostForm />
+                        : <PostCardWithActions post={post} />
+                      }
+                    </div>
+                  ))}
+                </div>
 
-<PostCard
-  title={post.title}
-  excerpt={post.content}
-  tag={post.flair}
-  timeAgo={timeAgo(post.created_at)}
-  likes={post.reactions[0]?.count ?? 0}
-  comments={post.comments[0]?.count ?? 0}
-  username={post.profiles?.username ?? profile?.username}
-  avatar={avatarSrc ?? post.profiles?.avatar_url ?? ""}
-  imageUrls={post.image_urls ?? []}
-  videoUrl={post.video_url ?? null}
-/>
-                        </Link>
-                        <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity z-10">
-                          <button
-                            onClick={(e) => { e.preventDefault(); startEditPost(post) }}
-                            className="p-1.5 rounded-lg bg-card border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground shadow-sm"
-                          >
-                            <Pencil className="size-3.5" />
-                          </button>
-                          <button
-                            onClick={(e) => { e.preventDefault(); handleToggleLock(post) }}
-                            className={`p-1.5 rounded-lg bg-card border border-border hover:bg-muted transition-colors shadow-sm ${post.locked ? "text-orange-500" : "text-muted-foreground hover:text-foreground"}`}
-                          >
-                            {post.locked ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}
-                          </button>
-                          <button
-                            onClick={(e) => { e.preventDefault(); handleDeletePost(post.id) }}
-                            className="p-1.5 rounded-lg bg-card border border-border hover:bg-red-500/10 transition-colors text-muted-foreground hover:text-red-500 shadow-sm"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
-                        </div>
-                      </>
-                    )}
+                {/* Desktop Masonry */}
+                <div className="hidden md:block">
+                  <div className="columns-2 lg:columns-3 gap-6">
+                    {filteredPosts.map(post => (
+                      <div key={post.id} className="mb-6 break-inside-avoid relative group/card">
+                        {editingPost?.id === post.id
+                          ? <EditPostForm />
+                          : <PostCardWithActions post={post} />
+                        }
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+
+                  <div className="flex flex-col items-center justify-center mt-16 mb-8 text-center">
+                    <div className="h-px w-24 bg-border mb-4" />
+                    <p className="text-sm font-medium text-muted-foreground">🎉 You're all caught up!</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">That's everything for now.</p>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         )}

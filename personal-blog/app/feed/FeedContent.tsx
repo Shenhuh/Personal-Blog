@@ -6,94 +6,12 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { PostCard } from "@/components/PostCard"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, ImagePlus, X as XIcon, AlertCircle, Tag, ArrowUp, Video, Play, Pause, Volume2, VolumeX } from "lucide-react"
+import { Search, ImagePlus, X as XIcon, AlertCircle, Tag, ArrowUp, Video } from "lucide-react"
 import { timeAgo } from "@/lib/timeAgo"
 import Link from "next/link"
 
 const sortOptions = ["Latest", "Top Liked", "Most Commented", "Trending"]
 type PostStatus = "idle" | "uploading" | "posting" | "done" | "error"
-
-// ── Inline Video Player ───────────────────────────────────────────────────────
-function VideoPlayer({ src }: { src: string }) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const [playing, setPlaying] = useState(false)
-  const [muted, setMuted] = useState(true)
-  const [progress, setProgress] = useState(0)
-
-  const toggle = (e: React.MouseEvent) => {
-    e.preventDefault()
-    const v = videoRef.current
-    if (!v) return
-    playing ? v.pause() : v.play()
-    setPlaying(!playing)
-  }
-
-  const toggleMute = (e: React.MouseEvent) => {
-    e.preventDefault()
-    const v = videoRef.current
-    if (!v) return
-    v.muted = !muted
-    setMuted(!muted)
-  }
-
-  const onTimeUpdate = () => {
-    const v = videoRef.current
-    if (!v || !v.duration) return
-    setProgress((v.currentTime / v.duration) * 100)
-  }
-
-  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    const v = videoRef.current
-    if (!v) return
-    const rect = e.currentTarget.getBoundingClientRect()
-    v.currentTime = ((e.clientX - rect.left) / rect.width) * v.duration
-  }
-
-  return (
-    <div className="relative w-full rounded-xl overflow-hidden bg-black group/video">
-      <video
-        ref={videoRef}
-        src={src}
-        className="w-full max-h-64 object-contain"
-        muted
-        playsInline
-        onTimeUpdate={onTimeUpdate}
-        onEnded={() => setPlaying(false)}
-      />
-      {/* Overlay controls */}
-      <div className="absolute inset-0 flex flex-col justify-between p-2 opacity-0 group-hover/video:opacity-100 transition-opacity bg-gradient-to-t from-black/60 to-transparent">
-        {/* Play / Pause centre button */}
-        <button
-          onClick={toggle}
-          className="absolute inset-0 flex items-center justify-center cursor-pointer"
-        >
-          <div className="bg-black/50 rounded-full p-3 backdrop-blur-sm hover:bg-black/70 transition-colors">
-            {playing
-              ? <Pause className="size-5 text-white" />
-              : <Play className="size-5 text-white fill-white" />}
-          </div>
-        </button>
-        {/* Bottom bar */}
-        <div className="mt-auto flex flex-col gap-1 pointer-events-auto">
-          {/* Seek bar */}
-          <div
-            className="w-full h-1 bg-white/30 rounded-full cursor-pointer"
-            onClick={seek}
-          >
-            <div className="h-1 bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
-          </div>
-          {/* Mute */}
-          <div className="flex justify-end">
-            <button onClick={toggleMute} className="cursor-pointer text-white hover:text-primary transition-colors">
-              {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 export default function FeedContent() {
   const supabase = createClient()
@@ -118,7 +36,6 @@ export default function FeedContent() {
   const [postStatus, setPostStatus] = useState<PostStatus>("idle")
   const [validationMsg, setValidationMsg] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [liveAvatar, setLiveAvatar] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
@@ -230,7 +147,6 @@ export default function FeedContent() {
   const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    // Max 100 MB guard
     if (file.size > 100 * 1024 * 1024) {
       setValidationMsg("Video must be under 100 MB.")
       setTimeout(() => setValidationMsg(null), 3000)
@@ -263,15 +179,11 @@ export default function FeedContent() {
         const { data: urlData } = supabase.storage.from("post-images").getPublicUrl(path)
         image_urls.push(urlData.publicUrl)
       }
-
       let video_url: string | null = null
       if (videoFile) {
         const ext = videoFile.name.split(".").pop()
-        const safeName = `${Date.now()}.${ext}`
-        const path = `${user.id}/${safeName}`
-        const { error: videoError } = await supabase.storage
-          .from("post-videos")
-          .upload(path, videoFile)
+        const path = `${user.id}/${Date.now()}.${ext}`
+        const { error: videoError } = await supabase.storage.from("post-videos").upload(path, videoFile)
         if (videoError) {
           setValidationMsg("Video upload failed. Please try again.")
           setTimeout(() => setValidationMsg(null), 3000)
@@ -281,7 +193,6 @@ export default function FeedContent() {
         const { data: urlData } = supabase.storage.from("post-videos").getPublicUrl(path)
         video_url = urlData.publicUrl
       }
-
       await supabase.from("posts").insert({ title, content, flair, user_id: user.id, image_urls, video_url })
       setPostStatus("done")
       setTitle(""); setContent(""); setFlair("")
@@ -301,7 +212,7 @@ export default function FeedContent() {
   const filteredFlairs = flairs.filter(f => f !== "All" && f.toLowerCase().includes(flairSearch.toLowerCase()))
 
   return (
-    <div className="max-w-4xl mx-auto w-full px-6 py-6">
+    <div className="max-w-5xl mx-auto w-full px-4 sm:px-6 py-6">
       <div ref={topRef} />
 
       {/* ── Validation toast ── */}
@@ -373,7 +284,7 @@ export default function FeedContent() {
             {/* Video preview */}
             {videoPreview && (
               <div className="relative mb-1">
-                <VideoPlayer src={videoPreview} />
+                <video src={videoPreview} className="w-full rounded-xl max-h-48 object-contain bg-black" controls playsInline />
                 <button
                   onClick={removeVideo}
                   className="absolute top-2 right-2 bg-destructive text-white rounded-full p-1 cursor-pointer hover:bg-destructive/80 transition-colors z-10"
@@ -439,9 +350,7 @@ export default function FeedContent() {
                 <button
                   onClick={() => !videoFile && videoInputRef.current?.click()}
                   className={`flex items-center gap-2 text-xs transition-colors ${
-                    videoFile
-                      ? "text-primary cursor-default"
-                      : "text-muted-foreground hover:text-primary cursor-pointer"
+                    videoFile ? "text-primary cursor-default" : "text-muted-foreground hover:text-primary cursor-pointer"
                   }`}
                   title={videoFile ? "Video attached" : "Add a video (max 100 MB)"}
                 >
@@ -479,22 +388,20 @@ export default function FeedContent() {
         </div>
         {mounted && (
           <Select value={currentSort} onValueChange={v => router.push(`/feed?flair=${currentFlair}&sort=${v}`)}>
-            <SelectTrigger className="w-[130px] rounded-full h-8 text-xs px-4 cursor-pointer"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[140px] rounded-full h-8 text-xs px-4 cursor-pointer"><SelectValue /></SelectTrigger>
             <SelectContent>{sortOptions.map(s => <SelectItem key={s} value={s} className="text-xs cursor-pointer">{s}</SelectItem>)}</SelectContent>
           </Select>
         )}
       </div>
 
-      {/* ── Post Grid ── */}
+      {/* ── Posts Section ── */}
       {loading ? (
-        // Skeleton loader
-        <div className="grid gap-6 md:grid-cols-2">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="rounded-2xl border border-border bg-card p-4 animate-pulse h-40" />
+        <div className="columns-2 lg:columns-3 gap-6 hidden md:block">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="mb-6 rounded-2xl border border-border bg-card p-4 animate-pulse h-40" />
           ))}
         </div>
       ) : posts.length === 0 ? (
-        // ── Empty state ──
         <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
           <div className="size-16 rounded-full bg-muted flex items-center justify-center">
             <Search className="size-7 text-muted-foreground" />
@@ -517,24 +424,57 @@ export default function FeedContent() {
           )}
         </div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2">
-          {posts.map(post => (
-            <Link href={`/feed/${post.id}`} key={post.id} className="cursor-pointer">
-              <PostCard
-                title={post.title}
-                excerpt={post.content}
-                tag={post.flair}
-                timeAgo={timeAgo(post.created_at)}
-                likes={post.reactions[0]?.count ?? 0}
-                comments={post.comments[0]?.count ?? 0}
-                username={post.profiles?.username}
-                avatar={getPostAvatar(post)}
-                imageUrls={post.image_urls}
-                videoUrl={post.video_url ?? null}
-              />
-            </Link>
-          ))}
-        </div>
+        <>
+          {/* Mobile: single column */}
+          <div className="flex flex-col gap-6 md:hidden">
+            {posts.map(post => (
+              <Link href={`/feed/${post.id}`} key={post.id} className="cursor-pointer">
+                <PostCard
+                  title={post.title}
+                  excerpt={post.content}
+                  tag={post.flair}
+                  timeAgo={timeAgo(post.created_at)}
+                  likes={post.reactions[0]?.count ?? 0}
+                  comments={post.comments[0]?.count ?? 0}
+                  username={post.profiles?.username}
+                  avatar={getPostAvatar(post)}
+                  imageUrls={post.image_urls}
+                  videoUrl={post.video_url ?? null}
+                />
+              </Link>
+            ))}
+          </div>
+
+          {/* Desktop: masonry */}
+          <div className="hidden md:block">
+            <div className="columns-2 lg:columns-3 gap-6">
+              {posts.map(post => (
+                <div key={post.id} className="mb-6 break-inside-avoid">
+                  <Link href={`/feed/${post.id}`} className="cursor-pointer">
+                    <PostCard
+                      title={post.title}
+                      excerpt={post.content}
+                      tag={post.flair}
+                      timeAgo={timeAgo(post.created_at)}
+                      likes={post.reactions[0]?.count ?? 0}
+                      comments={post.comments[0]?.count ?? 0}
+                      username={post.profiles?.username}
+                      avatar={getPostAvatar(post)}
+                      imageUrls={post.image_urls}
+                      videoUrl={post.video_url ?? null}
+                    />
+                  </Link>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col items-center justify-center mt-16 mb-8 text-center">
+              <div className="h-px w-24 bg-border mb-4" />
+              <p className="text-sm font-medium text-muted-foreground">🎉 You're all caught up!</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">That's everything for now.</p>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )
