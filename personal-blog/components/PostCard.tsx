@@ -2,7 +2,7 @@
 
 import { Heart, MessageCircle, Clock, Play, Pause, Volume2, VolumeX, Maximize2, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { useRef, useState, useEffect, useCallback } from "react"
+import { useRef, useState, useEffect } from "react"
 
 interface PostCardProps {
   title: string
@@ -109,21 +109,12 @@ function VideoPlayer({ src, onFullscreen }: {
   onFullscreen: (currentTime: number, wasPlaying: boolean) => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
   const [playing, setPlaying] = useState(false)
   const [muted, setMuted] = useState(false)
   const [progress, setProgress] = useState(0)
 
-  useEffect(() => {
-    const el = containerRef.current; if (!el) return
-    const obs = new IntersectionObserver(([entry]) => {
-      const v = videoRef.current; if (!v) return
-      if (entry.isIntersecting) v.play().then(() => setPlaying(true)).catch(() => {})
-      else { v.pause(); setPlaying(false) }
-    }, { threshold: 0.6 })
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [])
+  // ── Autoplay via IntersectionObserver has been intentionally removed ──
+  // Videos now only play when the user clicks the play button
 
   const block = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation() }
   const toggle = (e: React.MouseEvent) => {
@@ -150,7 +141,7 @@ function VideoPlayer({ src, onFullscreen }: {
   if (!src || src.trim() === "") return null
 
   return (
-    <div ref={containerRef} className="relative w-full rounded-xl overflow-hidden bg-black group/video mt-4" onClick={block}>
+    <div className="relative w-full rounded-xl overflow-hidden bg-black group/video mt-4" onClick={block}>
       <video
         ref={videoRef}
         src={src}
@@ -193,6 +184,15 @@ function VideoPlayer({ src, onFullscreen }: {
           </div>
         </div>
       </div>
+
+      {/* Show a big play button overlay when paused so users know it's a video */}
+      {!playing && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="bg-black/50 rounded-full p-4 backdrop-blur-sm">
+            <Play className="size-7 text-white fill-white" />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -39,6 +39,7 @@ export default function FeedContent() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [liveAvatar, setLiveAvatar] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [hiddenUserIds, setHiddenUserIds] = useState<string[]>([])
 
   const dropdownRef = useRef<HTMLDivElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -52,10 +53,22 @@ export default function FeedContent() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       setCurrentUserId(user.id)
+
       const cached = localStorage.getItem(`live_avatar_url_${user.id}`)
-      if (cached) { setLiveAvatar(cached); return }
-      const { data } = await supabase.from("profiles").select("avatar_url").eq("id", user.id).single()
-      if (data?.avatar_url) setLiveAvatar(data.avatar_url)
+      if (cached) {
+        setLiveAvatar(cached)
+      } else {
+        const { data } = await supabase.from("profiles").select("avatar_url").eq("id", user.id).single()
+        if (data?.avatar_url) setLiveAvatar(data.avatar_url)
+      }
+
+      const [{ data: mutedData }, { data: blockedData }] = await Promise.all([
+        supabase.from("mutes").select("muted_id").eq("muter_id", user.id),
+        supabase.from("blocks").select("blocked_id").eq("blocker_id", user.id),
+      ])
+      const mutedIds = (mutedData ?? []).map((r: any) => r.muted_id)
+      const blockedIds = (blockedData ?? []).map((r: any) => r.blocked_id)
+      setHiddenUserIds([...new Set([...mutedIds, ...blockedIds])])
     }
     init()
   }, [])
@@ -119,6 +132,7 @@ export default function FeedContent() {
       .channel("feed-realtime")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, async (payload) => {
         if (payload.new.user_id === currentUserId) return
+        if (hiddenUserIds.includes(payload.new.user_id)) return
         if (currentFlair !== "All" && payload.new.flair !== currentFlair) return
         const { data } = await supabase
           .from("posts")
@@ -129,7 +143,7 @@ export default function FeedContent() {
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [currentUserId, currentFlair])
+  }, [currentUserId, currentFlair, hiddenUserIds])
 
   const flushPendingPosts = () => {
     setPosts(prev => [...pendingPosts, ...prev])
@@ -210,12 +224,12 @@ export default function FeedContent() {
   }
 
   const filteredFlairs = flairs.filter(f => f !== "All" && f.toLowerCase().includes(flairSearch.toLowerCase()))
+  const visiblePosts = posts.filter(post => !hiddenUserIds.includes(post.user_id))
 
   return (
     <div className="max-w-5xl mx-auto w-full px-4 sm:px-6 py-6">
       <div ref={topRef} />
 
-      {/* ── Validation toast ── */}
       {validationMsg && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 bg-card border border-orange-500/30 rounded-2xl px-5 py-3 shadow-xl">
           <AlertCircle className="size-4 text-orange-500" />
@@ -223,7 +237,6 @@ export default function FeedContent() {
         </div>
       )}
 
-      {/* ── New posts pill ── */}
       {pendingPosts.length > 0 && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[90]" style={{ animation: "slideDown 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)" }}>
           <button
@@ -261,7 +274,6 @@ export default function FeedContent() {
               className="w-full bg-transparent resize-none outline-none text-sm text-muted-foreground h-24 cursor-text"
             />
 
-            {/* Image previews */}
             {imagePreviews.length > 0 && (
               <div className="flex gap-2 mb-1">
                 {imagePreviews.map((p, i) => (
@@ -281,9 +293,9 @@ export default function FeedContent() {
               </div>
             )}
 
-            {/* Video preview */}
             {videoPreview && (
               <div className="relative mb-1">
+                {/* autoPlay removed intentionally */}
                 <video src={videoPreview} className="w-full rounded-xl max-h-48 object-contain bg-black" controls playsInline />
                 <button
                   onClick={removeVideo}
@@ -294,9 +306,8 @@ export default function FeedContent() {
               </div>
             )}
 
-            <div className="flex items-center justify-between pt-3 border-t border-border">
-              <div className="flex items-center gap-3">
-                {/* Flair picker */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border">
+  <div className="flex items-center gap-3 flex-wrap">
                 <div className="relative" ref={dropdownRef}>
                   <button
                     type="button"
@@ -335,7 +346,6 @@ export default function FeedContent() {
                   )}
                 </div>
 
-                {/* Image upload */}
                 <button
                   onClick={() => imageInputRef.current?.click()}
                   className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer"
@@ -346,7 +356,6 @@ export default function FeedContent() {
                 </button>
                 <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
 
-                {/* Video upload */}
                 <button
                   onClick={() => !videoFile && videoInputRef.current?.click()}
                   className={`flex items-center gap-2 text-xs transition-colors ${
@@ -360,11 +369,11 @@ export default function FeedContent() {
                 <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={handleVideoSelect} />
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 shrink-0">
                 <Button variant="ghost" size="sm" className="rounded-full h-8 px-4 cursor-pointer" onClick={() => setIsExpanded(false)}>Cancel</Button>
-                <Button size="sm" className="rounded-full h-8 px-4 cursor-pointer" onClick={handlePost} disabled={postStatus !== "idle"}>
-                  {postStatus === "uploading" ? "Posting..." : "Post"}
-                </Button>
+                <Button size="sm" className="rounded-full h-8 px-4 cursor-pointer min-w-[80px]" onClick={handlePost} disabled={postStatus !== "idle"}>
+  {postStatus === "uploading" ? "Posting..." : "Post"}
+</Button>
               </div>
             </div>
           </div>
@@ -394,14 +403,14 @@ export default function FeedContent() {
         )}
       </div>
 
-      {/* ── Posts Section ── */}
+      {/* ── Posts ── */}
       {loading ? (
         <div className="columns-2 lg:columns-3 gap-6 hidden md:block">
           {[...Array(6)].map((_, i) => (
             <div key={i} className="mb-6 rounded-2xl border border-border bg-card p-4 animate-pulse h-40" />
           ))}
         </div>
-      ) : posts.length === 0 ? (
+      ) : visiblePosts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
           <div className="size-16 rounded-full bg-muted flex items-center justify-center">
             <Search className="size-7 text-muted-foreground" />
@@ -425,9 +434,8 @@ export default function FeedContent() {
         </div>
       ) : (
         <>
-          {/* Mobile: single column */}
           <div className="flex flex-col gap-6 md:hidden">
-            {posts.map(post => (
+            {visiblePosts.map(post => (
               <Link href={`/feed/${post.id}`} key={post.id} className="cursor-pointer">
                 <PostCard
                   title={post.title}
@@ -445,10 +453,9 @@ export default function FeedContent() {
             ))}
           </div>
 
-          {/* Desktop: masonry */}
           <div className="hidden md:block">
             <div className="columns-2 lg:columns-3 gap-6">
-              {posts.map(post => (
+              {visiblePosts.map(post => (
                 <div key={post.id} className="mb-6 break-inside-avoid">
                   <Link href={`/feed/${post.id}`} className="cursor-pointer">
                     <PostCard
@@ -467,7 +474,6 @@ export default function FeedContent() {
                 </div>
               ))}
             </div>
-
             <div className="flex flex-col items-center justify-center mt-16 mb-8 text-center">
               <div className="h-px w-24 bg-border mb-4" />
               <p className="text-sm font-medium text-muted-foreground">🎉 You're all caught up!</p>
