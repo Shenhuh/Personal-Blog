@@ -4,7 +4,195 @@ import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { Compass, Search, Hash, TrendingUp } from "lucide-react"
-import { Button } from "@/components/ui/button"
+
+// Determines if text should be light or dark based on background image brightness
+function useImageBrightness(imageUrl: string | null) {
+  const [isDark, setIsDark] = useState(false) // isDark = true means image is dark → use light text
+
+  useEffect(() => {
+    if (!imageUrl) return
+
+    const img = new Image()
+    img.crossOrigin = "anonymous"
+    img.src = imageUrl
+
+    img.onload = () => {
+      const canvas = document.createElement("canvas")
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+
+      // Sample a small portion for performance
+      canvas.width = 50
+      canvas.height = 20
+      ctx.drawImage(img, 0, 0, 50, 20)
+
+      const { data } = ctx.getImageData(0, 0, 50, 20)
+      let totalBrightness = 0
+      const pixelCount = data.length / 4
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i + 1], b = data[i + 2]
+        // Perceived brightness formula
+        totalBrightness += (r * 299 + g * 587 + b * 114) / 1000
+      }
+
+      const avgBrightness = totalBrightness / pixelCount
+      setIsDark(avgBrightness < 128) // dark image → use white text
+    }
+  }, [imageUrl])
+
+  return isDark
+}
+
+function FollowButton({
+  isFollowing,
+  hasCover,
+  isDarkBg,
+  onClick,
+}: {
+  isFollowing: boolean
+  hasCover: boolean
+  isDarkBg: boolean
+  onClick: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  const [pressed, setPressed] = useState(false)
+
+  const getStyle = (): React.CSSProperties => {
+    if (!hasCover) return {}
+
+    if (isFollowing) {
+      // Outline style
+      const base: React.CSSProperties = {
+        background: hovered ? (isDarkBg ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)") : "transparent",
+        color: isDarkBg ? "white" : "#111",
+        borderColor: isDarkBg ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.5)",
+        transform: pressed ? "scale(0.95)" : "scale(1)",
+        opacity: pressed ? 0.8 : 1,
+      }
+      return base
+    } else {
+      // Filled style
+      const bgBase = isDarkBg ? "255,255,255" : "17,17,17"
+      return {
+        background: pressed
+          ? `rgba(${bgBase}, 0.75)`
+          : hovered
+          ? `rgba(${bgBase}, 0.85)`
+          : `rgba(${bgBase}, 1)`,
+        color: isDarkBg ? "#111" : "white",
+        borderColor: "transparent",
+        transform: pressed ? "scale(0.95)" : "scale(1)",
+      }
+    }
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setPressed(false) }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      className="rounded-full shrink-0 px-4 py-1.5 text-sm font-medium border cursor-pointer"
+      style={{
+        transition: "background 0.15s, transform 0.1s, opacity 0.1s, border-color 0.15s",
+        ...getStyle(),
+      }}
+    >
+      {isFollowing ? "Unfollow" : "Follow"}
+    </button>
+  )
+}
+
+// Individual user card with cover photo background
+function UserCard({
+  user,
+  isFollowing,
+  onFollow,
+  onNavigate,
+}: {
+  user: any
+  isFollowing: boolean
+  onFollow: (id: string) => void
+  onNavigate: (id: string) => void
+}) {
+  const isDarkBg = useImageBrightness(user.cover_url ?? null)
+
+  // If there's a cover photo, use dynamic text color. Otherwise use default card styles.
+  const hasCover = !!user.cover_url
+  const textPrimary = hasCover ? (isDarkBg ? "text-white" : "text-gray-900") : "text-foreground"
+  const textSecondary = hasCover ? (isDarkBg ? "text-white/75" : "text-gray-700") : "text-muted-foreground"
+  const textMeta = hasCover ? (isDarkBg ? "text-white/60" : "text-gray-600") : "text-muted-foreground"
+
+  return (
+    <div
+      className="relative flex items-center gap-4 rounded-2xl border border-border overflow-hidden p-4 hover:border-foreground/20 transition-colors"
+      style={
+        hasCover
+          ? {
+              backgroundImage: `url(${user.cover_url})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }
+          : {}
+      }
+    >
+      {/* Dark/light overlay for readability when cover exists */}
+      {hasCover && (
+        <div
+          className="absolute inset-0"
+          style={{
+            background: isDarkBg
+              ? "linear-gradient(to right, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.3) 100%)"
+              : "linear-gradient(to right, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0.4) 100%)",
+          }}
+        />
+      )}
+
+      {/* Card content — must be above overlay */}
+      <div className="relative z-10 flex items-center gap-4 w-full">
+        <button onClick={() => onNavigate(user.id)}>
+          {user.avatar_url ? (
+            <img
+              src={user.avatar_url}
+              className="size-12 rounded-full object-cover shrink-0 ring-2 ring-white/30"
+            />
+          ) : (
+            <div className="size-12 rounded-full bg-muted shrink-0 ring-2 ring-white/20" />
+          )}
+        </button>
+
+        <div
+          className="flex-1 min-w-0 cursor-pointer"
+          onClick={() => onNavigate(user.id)}
+          role="button"
+        >
+          <p className={`text-sm font-semibold hover:underline ${textPrimary}`}>
+            @{user.username}
+          </p>
+          {user.bio ? (
+            <p className={`text-xs mt-0.5 line-clamp-1 ${textSecondary}`}>{user.bio}</p>
+          ) : (
+            <p className={`text-xs mt-0.5 italic ${textSecondary}`}>No bio yet</p>
+          )}
+          <p className={`text-[10px] mt-1 flex items-center gap-2 ${textMeta}`}>
+            <span>{user.follows?.[0]?.count ?? 0} followers</span>
+            <span className="opacity-40">·</span>
+            <span>{user.posts[0]?.count ?? 0} whispers</span>
+          </p>
+        </div>
+
+        <FollowButton
+          isFollowing={isFollowing}
+          hasCover={hasCover}
+          isDarkBg={isDarkBg}
+          onClick={() => onFollow(user.id)}
+        />
+      </div>
+    </div>
+  )
+}
 
 export default function DiscoverPage() {
   const supabase = createClient()
@@ -14,7 +202,7 @@ export default function DiscoverPage() {
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [followingIds, setFollowingIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
-  const [trendingTags, setTrendingTags] = useState<{ tag: string, count: number }[]>([])
+  const [trendingTags, setTrendingTags] = useState<{ tag: string; count: number }[]>([])
   const [loadingTags, setLoadingTags] = useState(true)
 
   const fetchCurrentUser = async () => {
@@ -25,7 +213,7 @@ export default function DiscoverPage() {
       .from("follows")
       .select("following_id")
       .eq("follower_id", user.id)
-    if (data) setFollowingIds(data.map(f => f.following_id))
+    if (data) setFollowingIds(data.map((f) => f.following_id))
   }
 
   const fetchUsers = async () => {
@@ -33,7 +221,7 @@ export default function DiscoverPage() {
     if (!user) return
     const { data } = await supabase
       .from("profiles")
-      .select("*, posts(count)")
+      .select("*, posts(count), follows!follows_following_id_fkey(count)")
       .neq("id", user.id)
       .order("created_at", { ascending: false })
     if (data) setUsers(data)
@@ -75,24 +263,32 @@ export default function DiscoverPage() {
     if (!currentUser) return
     const isFollowing = followingIds.includes(targetId)
     if (isFollowing) {
-      await supabase.from("follows").delete().eq("follower_id", currentUser.id).eq("following_id", targetId)
-      setFollowingIds(prev => prev.filter(id => id !== targetId))
+      await supabase
+        .from("follows")
+        .delete()
+        .eq("follower_id", currentUser.id)
+        .eq("following_id", targetId)
+      setFollowingIds((prev) => prev.filter((id) => id !== targetId))
     } else {
-      await supabase.from("follows").insert({ follower_id: currentUser.id, following_id: targetId })
-      setFollowingIds(prev => [...prev, targetId])
+      await supabase
+        .from("follows")
+        .insert({ follower_id: currentUser.id, following_id: targetId })
+      setFollowingIds((prev) => [...prev, targetId])
     }
   }
 
-  const filtered = users.filter(u =>
-    u.username?.toLowerCase().includes(search.toLowerCase()) ||
-    u.bio?.toLowerCase().includes(search.toLowerCase())
+  const filtered = users.filter(
+    (u) =>
+      u.username?.toLowerCase().includes(search.toLowerCase()) ||
+      u.bio?.toLowerCase().includes(search.toLowerCase())
   )
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <span className="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
+  if (loading)
+    return (
+      <div className="flex items-center justify-center h-64">
+        <span className="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
 
   return (
     <div className="max-w-3xl mx-auto w-full px-6 py-6 space-y-8">
@@ -152,7 +348,7 @@ export default function DiscoverPage() {
           <Search className="size-4 text-muted-foreground shrink-0" />
           <input
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by username or bio..."
             className="bg-transparent outline-none text-sm flex-1"
           />
@@ -165,36 +361,14 @@ export default function DiscoverPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {filtered.map(user => (
-              <div
+            {filtered.map((user) => (
+              <UserCard
                 key={user.id}
-                className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4 hover:border-foreground/20 transition-colors"
-              >
-                <button onClick={() => router.push(`/feed/user/${user.id}`)}>
-                  {user.avatar_url
-                    ? <img src={user.avatar_url} className="size-12 rounded-full object-cover shrink-0" />
-                    : <div className="size-12 rounded-full bg-muted shrink-0" />}
-                </button>
-                <div className="flex-1 min-w-0" onClick={() => router.push(`/feed/user/${user.id}`)} role="button">
-                  <p className="text-sm font-semibold text-foreground hover:underline cursor-pointer">
-                    @{user.username}
-                  </p>
-                  {user.bio
-                    ? <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{user.bio}</p>
-                    : <p className="text-xs text-muted-foreground mt-0.5 italic">No bio yet</p>}
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    {user.posts[0]?.count ?? 0} whispers
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant={followingIds.includes(user.id) ? "outline" : "default"}
-                  className="rounded-full shrink-0"
-                  onClick={() => handleFollow(user.id)}
-                >
-                  {followingIds.includes(user.id) ? "Unfollow" : "Follow"}
-                </Button>
-              </div>
+                user={user}
+                isFollowing={followingIds.includes(user.id)}
+                onFollow={handleFollow}
+                onNavigate={(id) => router.push(`/feed/user/${id}`)}
+              />
             ))}
           </div>
         )}
