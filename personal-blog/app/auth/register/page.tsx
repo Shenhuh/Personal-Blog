@@ -14,7 +14,13 @@ export default function RegisterPage() {
   const supabase = createClient()
 
   const handleRegister = async () => {
-    const { error } = await supabase.auth.signUp({ email, password })
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
     if (error) setError(error.message)
     else alert("Check your email to confirm your account!")
   }
